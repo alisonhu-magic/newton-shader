@@ -1,36 +1,5 @@
-/* ---------- layout tokens ----------
-   The approved 3:1 banner is the visual baseline. Every layout size lives here
-   as a share of one reference length, so the design is tuned in one place
-   instead of through numbers scattered across the renderers.
-
-   `basis` names the reference length a share is measured against. Each basis
-   has an exact CSS container-unit twin, which is what lets the live preview
-   stay declarative while the PNG/SVG/MP4 export mirrors it in pixels from this
-   same table:
-
-     w     canvas width     100cqw
-     h     canvas height    100cqh
-     min   short side       100cqmin
-     fitw  \  the largest baseline-ratio box that fits inside the canvas,
-     fith  /  measured on its width and on its height respectively
-
-   `fitw`/`fith` carry the scaling system. Both equal their baseline dimension
-   times min(W/1920, H/640), so a share written against them holds its baseline
-   proportion at every ratio. Type sits on `fitw` and the logo on `fith`, which
-   is what keeps the headline-to-logo relationship steady from ultra-wide
-   through to story.
-
-   Off 3:1, type, logo, and stack gap take a per-format scale from
-   `FORMAT_LAYOUT` so the composition reads larger away from the banner. Grid
-   whitespace does not: margins stay on `min` so the measure is not pinched.
-   4:3 and portrait formats also span more columns. Tune live in Ratio lab;
-   3:1 is locked — do not retune `BASELINE` or the type steps.
-
-   Changing a group's basis moves preview and export together, so the two can
-   never drift apart. */
-/* ---- scale tokens ---- */
+/* ---------- canvas formats ---------- */
 const BASELINE = Object.freeze({ w: 1920, h: 640 });
-const BASE_AR  = BASELINE.w / BASELINE.h;
 const FORMATS = [
   { id:'3:1',  name:'Banner',     w:1920, h:640  },
   { id:'2:1',  name:'Wide',       w:1920, h:960  },
@@ -40,108 +9,13 @@ const FORMATS = [
   { id:'4:5',  name:'Portrait',   w:1080, h:1350 },
   { id:'9:16', name:'Story',      w:1080, h:1920 }
 ];
-/* Mutable on purpose — Ratio lab writes these. TOKENS stay frozen. */
-const FORMAT_LAYOUT = {
-  '3:1':  { scale:1,     spanCols:7,  locked:true },
-  '2:1':  { scale:1.26,  spanCols:7 },
-  '16:9': { scale:1.26,  spanCols:7 },
-  '4:3':  { scale:1.512, spanCols:9 },
-  '1:1':  { scale:1.56,  spanCols:10 },
-  '4:5':  { scale:1.80,  spanCols:10 },
-  '9:16': { scale:1.80,  spanCols:10 }
-};
 const formatBySize = (W, H) => {
   const w = Math.round(W), h = Math.round(H);
   return FORMATS.find(f => f.w === w && f.h === h) || null;
 };
-const layoutFor = (W, H) => {
-  const f = formatBySize(W, H);
-  return f ? FORMAT_LAYOUT[f.id] : null;
-};
-const isLockedBaseline = (W, H) => Math.abs(W / H - BASE_AR) < 1e-3;
-/* Named presets use FORMAT_LAYOUT. Odd sizes (tests, huge exports) keep the
-   old aspect-ratio bands so they do not go unscaled. */
-function bandScale(W, H){
-  if (isLockedBaseline(W, H)) return FORMAT_LAYOUT['3:1'].scale;
-  const ar = W / H;
-  if (Math.abs(ar - 1) < 1e-3) return FORMAT_LAYOUT['1:1'].scale;
-  if (ar < 1) return FORMAT_LAYOUT['9:16'].scale;
-  if (ar >= 2) return FORMAT_LAYOUT['2:1'].scale;
-  if (ar >= 1.5) return FORMAT_LAYOUT['16:9'].scale;
-  return FORMAT_LAYOUT['4:3'].scale;
-}
-const ratioScale = (W, H) => {
-  if (isLockedBaseline(W, H)) return FORMAT_LAYOUT['3:1'].scale;
-  const L = layoutFor(W, H);
-  return L ? L.scale : bandScale(W, H);
-};
-
-const REF_PX = {
-  w:    (W,H) => W,
-  h:    (W,H) => H,
-  min:  (W,H) => Math.min(W, H),
-  fitw: (W,H) => Math.min(W, H * BASE_AR),
-  fith: (W,H) => Math.min(W / BASE_AR, H)
-};
-const REF_CSS = {
-  w:    '100cqw',
-  h:    '100cqh',
-  min:  '100cqmin',
-  fitw: `min(100cqw, ${+(100 * BASE_AR).toFixed(4)}cqh)`,
-  fith: `min(${+(100 / BASE_AR).toFixed(4)}cqw, 100cqh)`
-};
-/* one share, resolved either to pixels (export) or to a CSS length (preview).
-   Grid tokens stay unscaled so margins do not eat the measure when type grows. */
-const refPx      = (basis, W, H) => REF_PX[basis](W, H);
-const tokenPx    = (pct, basis, W, H) => pct/100 * refPx(basis, W, H);
-const tokenCss   = (pct, basis) => `calc(${pct/100} * ${REF_CSS[basis]})`;
-const contentPx  = (pct, basis, W, H) => tokenPx(pct, basis, W, H) * ratioScale(W, H);
-const contentCss = (pct, basis) => `calc(${pct/100} * ${REF_CSS[basis]} * var(--ratio-scale, 1))`;
-
-const TOKENS = Object.freeze({
-  /* 3:1 type and logo tokens stay locked. Other ratios bump via FORMAT_LAYOUT. */
-  type: Object.freeze({ basis:'fitw', labels:Object.freeze(['S','M','L','XL']), steps:Object.freeze([1.2, 1.9, 3.1, 5.0]) }),
-  logo: Object.freeze({ basis:'fith', height:5.76 }),
-  grid: Object.freeze({ basis:'min', cols:12, margin:6, gutter:1.5 }),
-  text: Object.freeze({ basis:'fitw', gap:1.4, spanCols:7 })
-});
-
-const TYPE_STEPS = TOKENS.type.labels;
-const TYPE_PCT   = TOKENS.type.steps;
-/* tolerate step indices from older setups that used the 8-step ladder */
-const stepPct = i => TYPE_PCT[Math.min(Math.max(i|0, 0), TYPE_PCT.length - 1)];
-/* `scale` trims a role off its step without moving the ladder: uppercase copy
-   reads smaller than its point size, so the eyebrow rides a touch above S. */
-const ROLES = {
-  eyebrow:{weight:500, lead:1.30, track:0.10, upper:true,  scale:1.10, faceN:'500n', faceI:'500n', ckey:'cEyebrow'},
-  head:   {weight:300, lead:1.06, track:-0.02, upper:false, scale:1, faceN:'300n', faceI:'300i', ckey:'cHead'},
-  body:   {weight:400, lead:1.50, track:0.00,  upper:false, scale:1, faceN:'400n', faceI:'400i', ckey:'cBody'}
-};
-const roleSize = (step, role) => stepPct(step) * role.scale;
-const typePx  = (step, role, W, H) => contentPx(roleSize(step, role), TOKENS.type.basis, W, H);
-const typeCss = (step, role) => contentCss(roleSize(step, role), TOKENS.type.basis);
-/* logo scrim keeps the mark legible over dense pattern — a soft elliptical
-   wash of the background colour, centred on the mark and extended by a halo.
-   One geometry helper drives the preview, PNG, HTML and React output. */
-const SCRIM_PAD  = 1.6;   // halo thickness as a share of logo height
-const SCRIM_CORE = 45;    // % of the radius that stays fully opaque before the fade
-const scrimPad = h => h * SCRIM_PAD;
-function scrimRadii(w, h){ const pad = scrimPad(h); return [w/2 + pad, h/2 + pad]; }
-function scrimBg(pc){ return `radial-gradient(closest-side, ${pc} 0%, ${pc} ${SCRIM_CORE}%, ${hexA(pc,0)} 100%)`; }
-/* Padding grows the box so closest-side yields radii (w/2+pad, h/2+pad), and an
-   equal negative margin cancels it for layout so the mark itself stays on the
-   grid margin. A background paints behind the glyph, so no z-index is needed. */
-/* `len` is the logo height as a CSS length, so the halo follows whatever
-   reference the logo token scales against. */
-function scrimStyle(pc, len){
-  const p = `calc(${SCRIM_PAD} * ${len})`;
-  return `padding:${p};margin:calc(-1 * ${p});background:${scrimBg(pc)}`;
-}
-
-/* Logo artwork lives at the end of this file. */
 
 /* Brands are a registry so Foundation (or any later house) can land as a
-   second pack — palette, logo colours, defaults — without rewriting the tool.
+   second pack — palette and defaults — without rewriting the tool.
    `ready:false` keeps the switcher visible but inert until that pack exists. */
 const BRANDS = {
   labs: {
@@ -158,26 +32,16 @@ const BRANDS = {
       { name:'Gold',       hex:'#CBC28F', use:'Editorial headline blocks, card grounds' },
       { name:'Cream',      hex:'#E7E4DB', use:'Large backgrounds, paper-tone grounds' }
     ],
-    logoColors:{black:'#0E0E0F', white:'#FEFDF9', blue:'#5B83E4'},
     defaults:{ colors:['#3D6FE8', '#E7E4DB', '#BACCF8'], weights:[0, 50, 50] }
   },
   foundation: {
     id:'foundation', name:'Newton Foundation', ready:false,
     palette:[],
-    logoColors:{black:'#0E0E0F', white:'#FEFDF9', blue:'#5B83E4'},
     defaults:{ colors:['#0E0E0F', '#FBFCFE'], weights:[0, 100] }
   }
 };
 const brandOf = id => BRANDS[id] || BRANDS.labs;
 let BRAND = brandOf('labs').palette;
-let LOGO_COLORS = brandOf('labs').logoColors;
-
-/* logo height as a share of its reference length; size steps scale that token */
-const LOGO_SIZE = TOKENS.logo.height;
-const LOGO_SCALE = { S:0.62, M:1, L:1.28, XL:1.6 };
-const logoScale = () => LOGO_SCALE[S.logo.size] || 1;
-const logoHeightPx  = (W,H) => contentPx(LOGO_SIZE, TOKENS.logo.basis, W, H) * logoScale();
-const logoHeightCss = () => `calc(${LOGO_SIZE/100} * ${REF_CSS[TOKENS.logo.basis]} * var(--ratio-scale, 1) * ${logoScale()})`;
 
 /* ---------- state ---------- */
 const S = {
@@ -187,25 +51,11 @@ const S = {
   contrast:1.9, bias:.18, grain:.012,
   colors:['#3D6FE8', '#E7E4DB', '#BACCF8'],   // [0] ground, rest marks — brand palette only
   weights:[0, 50, 50],                        // per-mark appearance density %, aligned to colors indices
-  maskDir:'to right', maskOn:true, maskSolid:30, maskFade:70,   // maskDir follows text align via syncMaskToAlign()
   canvasW:1920, canvasH:640,
-  grid:{ show:false, cols:TOKENS.grid.cols, margin:TOKENS.grid.margin, gutter:TOKENS.grid.gutter },
-  zoom:'fit',                                 // preview only: 'fit' to the stage, or '1' for 1:1
 
   brand:'labs',
   mouseMode:0, mouseRadius:0.16, mouseStrength:1,
   mx:0.5, my:0.5, mon:0, mtx:0.5, mty:0.5, mtOn:0,
-  maskFollow:true,
-  logo:{ type:'lockup', pos:'tr', color:'white', size:'M', scrim:'none', plateIdx:0 },   // plateIdx 0 = ground/bg; backing always uses bg
-  text:{
-    on:true,
-    eyebrow:'Authorization layer',
-    head:'Policy, enforced *before* the transaction exists.',
-    body:'',
-    eyebrowStep:0, headStep:3, bodyStep:1,
-    align:'left', vAlign:'middle',
-    cEyebrow:1, cHead:1, cBody:1, spanCols:TOKENS.text.spanCols, gap:TOKENS.text.gap
-  },
   seed:Math.random()*100, paused:false
 };
 Object.defineProperty(S, 'ratio', { get(){ return S.canvasW / S.canvasH; } });
@@ -519,9 +369,7 @@ window.addEventListener('resize', ()=>{ wrapPad = null; });
 
 /* The frame takes its height from `aspect-ratio`, so it can only be constrained
    by width. Sizing it against the stage's height budget keeps portrait formats
-   fully visible instead of pushing the canvas and footer off screen.
-   At zoom '1' the fit is bypassed: the frame takes the export width outright,
-   one CSS pixel per export pixel, and the stage scrolls. */
+   fully visible instead of pushing the canvas and footer off screen. */
 function fitFrame(){
   const wrap = frameEl.parentElement;
   if(!wrapPad){
@@ -533,9 +381,7 @@ function fitFrame(){
   }
   // stacked layout scrolls, so only the desktop split view has a height budget
   const availH = stacked.matches ? Infinity : wrap.clientHeight - wrapPad.y;
-  const w = S.zoom === '1'
-    ? Math.round(S.canvasW)
-    : fitFrameWidth(wrap.clientWidth - wrapPad.x, availH, FRAME_MAX_W, S.ratio);
+  const w = fitFrameWidth(wrap.clientWidth - wrapPad.x, availH, FRAME_MAX_W, S.ratio);
   const px = w + 'px';
   if(frameEl.style.width !== px) frameEl.style.width = px;
   const ar = String(S.ratio);
@@ -551,23 +397,17 @@ function showZoom(frameW){
   zoomEl.textContent = pct;
 }
 
-/* Fit keeps the frame under 1100 CSS px, but at 1:1 the frame alone can be
-   larger than the driver's buffer limits — back the pixel ratio off until the
-   drawing buffer fits, rather than letting the context fail to a black frame. */
+/* Fit keeps the frame under 1100 CSS px. A huge export still needs a drawing
+   buffer that fits the driver — back the pixel ratio off rather than letting
+   the context fail to a black frame. */
 function previewDpr(cssW, cssH, dpr, maxDim, maxArea){
   const fit = Math.min(dpr, maxDim / Math.max(cssW, cssH), Math.sqrt(maxArea / (cssW * cssH)));
   return Math.max(Math.min(fit, dpr), 0.05);
 }
 
 let previewMaxDim = 0;
-function applyRatioScale(){
-  const v = String(ratioScale(S.canvasW, S.canvasH));
-  if(frameEl.style.getPropertyValue('--ratio-scale') !== v) frameEl.style.setProperty('--ratio-scale', v);
-}
-
 function sizeCanvas(){
   fitFrame();
-  applyRatioScale();
   const cssW = canvas.clientWidth || 900;
   const cssH = Math.round(cssW / S.ratio);
   if(!previewMaxDim) previewMaxDim = gl ? tileLimit() : FRAME_MAX_W;
@@ -575,18 +415,6 @@ function sizeCanvas(){
   canvas.style.aspectRatio = S.ratio;
   canvas.width  = Math.round(cssW*dpr);
   canvas.height = Math.round(cssH*dpr);
-}
-
-/* Recentre so the middle of the frame — where the copy usually sits — is what
-   the user lands on after switching to 1:1. */
-function setZoom(v){
-  S.zoom = v;
-  const wrap = frameEl.parentElement;
-  wrap.classList.toggle('zoomed', v === '1');
-  wrapPad = null;
-  sizeCanvas();
-  wrap.scrollLeft = (wrap.scrollWidth - wrap.clientWidth) / 2;
-  wrap.scrollTop  = (wrap.scrollHeight - wrap.clientHeight) / 2;
 }
 
 function loop(now){
@@ -621,7 +449,7 @@ const $ = id => document.getElementById(id);
 const toast = msg => { const t=$('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1400); };
 const setSwitch = (id, on) => { const el=$(id); if(el) el.setAttribute('aria-checked', String(!!on)); };
 
-const SLIDERS = ['freq','amp','speed','phase','cols','rowScale','len','weight','quant','jitter','contrast','bias','grain','maskSolid','maskFade','mouseRadius','mouseStrength'];
+const SLIDERS = ['freq','amp','speed','phase','cols','rowScale','len','weight','quant','jitter','contrast','bias','grain','mouseRadius','mouseStrength'];
 
 // write a value into either a display span or an editable input
 function putDisp(id, str){ const el=$(id); if(!el) return; if(el.tagName==='INPUT') el.value=str; else el.textContent=str; }
@@ -669,21 +497,13 @@ function syncSliders(){
     putDisp(k+'_v', fmtNum(S[k], el));
   });
 }
-/* Fade end has to sit past the solid stop or the gradient inverts. maskStops()
-   corrects that at render time, which on its own would leave the slider showing
-   a number the output never used — so move the paired slider with it. */
-function coupleMaskStops(changed){
-  if(changed === 'maskSolid' && S.maskFade <= S.maskSolid) S.maskFade = Math.min(100, S.maskSolid + 1);
-  if(changed === 'maskFade'  && S.maskSolid >= S.maskFade) S.maskSolid = Math.max(0, S.maskFade - 1);
-}
 SLIDERS.forEach(k=>{
   $(k).addEventListener('input', e=>{
     S[k] = parseFloat(e.target.value);
-    if(k === 'maskSolid' || k === 'maskFade') coupleMaskStops(k);
-    syncSliders(); applyMask(); meta();
+    syncSliders(); meta();
   });
 });
-[...SLIDERS.map(k=>k+'_v'), 'gMargin_v', 'gGutter_v', 'tMeasure_v', 'tGap_v'].forEach(bindEditable);
+SLIDERS.map(k=>k+'_v').forEach(bindEditable);
 
 function seg(id, obj, key, cast=v=>v, after){
   const el = $(id);
@@ -717,7 +537,7 @@ const FIELDS = [
     + '<span class="cap">'+f.name+'</span></button>'
   ).join('');
 })();
-seg('field', S, 'field', v=>parseInt(v), ()=>{ applyMask(); meta(); });
+seg('field', S, 'field', v=>parseInt(v), ()=>{ meta(); });
 seg('mouseMode', S, 'mouseMode', v=>parseInt(v));
 
 // per-field tuning so each motif reads clearly at thumbnail scale
@@ -790,59 +610,7 @@ function setCanvasSize(w, h, edited){
     else               S.canvasW = axisMax(S.canvasH);
     toast('Capped at ' + Math.round(AREA_MAX / 1e6) + ' megapixels — the largest frame that exports reliably');
   }
-  applyMask(); meta(); applyRatioScale();
-  renderText();
-  renderLogo();
-}
-function setFormatLayout(id, patch){
-  const row = FORMAT_LAYOUT[id];
-  if (!row) return null;
-  if (row.locked) return row;
-  patch = patch || {};
-  if (patch.scale != null){
-    const s = Number(patch.scale);
-    if (Number.isFinite(s) && s > 0) row.scale = s;
-  }
-  if (patch.spanCols != null){
-    const n = parseInt(patch.spanCols, 10);
-    if (Number.isFinite(n)) row.spanCols = Math.max(1, Math.min(S.grid.cols, n));
-  }
-  applyRatioScale();
-  renderText();
-  renderLogo();
-  return row;
-}
-function layoutStats(){
-  const W = S.canvasW, H = S.canvasH;
-  const f = formatBySize(W, H);
-  const L = f ? FORMAT_LAYOUT[f.id] : null;
-  const frameEl = document.getElementById('frame');
-  const frame = frameEl ? frameEl.getBoundingClientRect() : { width:0, height:0, left:0, top:0 };
-  const pct = (n, den) => den ? n / den * 100 : 0;
-  const origin = el => {
-    if (!el) return { x:null, y:null };
-    const b = el.getBoundingClientRect();
-    return { x: pct(b.left - frame.left, frame.width), y: pct(b.top - frame.top, frame.height) };
-  };
-  const scrimEl = document.querySelector('#logoLayer .scrim');
-  const inner = document.getElementById('txtInner');
-  const head = document.getElementById('tHead');
-  const headSize = head ? parseFloat(getComputedStyle(head).fontSize) || 0 : 0;
-  const logoBox = scrimEl ? scrimEl.getBoundingClientRect() : null;
-  const innerBox = inner ? inner.getBoundingClientRect() : null;
-  return {
-    id: f ? f.id : null,
-    scale: ratioScale(W, H),
-    cols: measureCols(W, H),
-    locked: !!(L && L.locked) || isLockedBaseline(W, H),
-    headPctW: pct(headSize, frame.width),
-    headPctH: pct(headSize, frame.height),
-    logoPctW: logoBox ? pct(logoBox.width, frame.width) : null,
-    logoPctH: logoBox ? pct(logoBox.height, frame.height) : null,
-    measurePctW: innerBox ? pct(innerBox.width, frame.width) : null,
-    logo: origin(scrimEl),
-    text: origin(inner)
-  };
+  meta();
 }
 (function initFormat(){
   const sel = $('format'); if(!sel) return;
@@ -891,8 +659,6 @@ function aaBadge(ratio){
 }
 
 function refreshColorConsumers(){
-  applyMask();
-  if(window.syncTextColor){ syncTextColor(); renderText(); renderLogo(); }
   meta();
 }
 
@@ -1146,7 +912,6 @@ function applyBrand(id, { resetColors=true } = {}){
   }
   S.brand = id;
   BRAND = b.palette;
-  LOGO_COLORS = b.logoColors;
   if(resetColors){
     S.colors = [...b.defaults.colors];
     S.weights = [...b.defaults.weights];
@@ -1167,7 +932,7 @@ function applyBrand(id, { resetColors=true } = {}){
   });
 })();
 
-/* ---------- image & fade mask ---------- */
+/* ---------- image ---------- */
 function loadImage(file){
   if(!file || !file.type.startsWith('image/')) return;
   const img = new Image();
@@ -1199,31 +964,13 @@ $('clearImg').onclick = ()=>{
 };
 $('invert').onclick = ()=>{ S.invert = S.invert ? 0 : 1; setSwitch('invert', !!S.invert); };
 
-/* One gradient definition for the preview, HTML and React output.
-   'center' is symmetric — solid through the middle and fading out to both
-   edges — so centred copy is protected while the pattern still reads at the
-   sides. Fade end is forced past the solid stop so the stops never invert. */
-function maskStops(){
-  const s = S.maskSolid, f = Math.max(S.maskFade, s + 1);
-  return S.maskDir === 'center'
-    ? [[50 - f/2, 0], [50 - s/2, 1], [50 + s/2, 1], [50 + f/2, 0]]
-    : [[0, 1], [s, 1], [f, 0], [100, 0]];
-}
-function maskGradient(){
-  if(S.maskDir === 'none') return '';
-  const dir = S.maskDir === 'center' ? 'to right' : S.maskDir;
-  const stops = maskStops().map(([p,a]) => `${hexA(S.colors[0], a)} ${+p.toFixed(2)}%`);
-  return `linear-gradient(${dir}, ${stops.join(', ')})`;
-}
-function applyMask(){
-  $('mask').style.background = maskGradient() || 'none';
-}
 function meta(){
   $('exportSize').textContent = `${Math.round(S.canvasW)} × ${Math.round(S.canvasH)}`;
   $('cellCount').textContent = `${Math.round(S.cols)} × ${Math.round(S.cols*(1/S.ratio)/S.rowScale)}`;
   $('seedOut').textContent = S.seed.toFixed(2);
   const ps=$('pngSize'); if(ps) ps.textContent = `${Math.round(S.canvasW)}×${Math.round(S.canvasH)}`;
   syncFormatSelect();
+  refreshEmbed();
 }
 
 $('reseed').onclick = ()=>{ S.seed = Math.random()*100; meta(); };
@@ -1234,514 +981,6 @@ function setPaused(v){
 $('pause').onclick = ()=> setPaused(!S.paused);
 
 
-/* ---------- grid & logo ---------- */
-/* Grid reference is the SHORT side, so whitespace keeps its optical weight
-   as the canvas ratio changes. CSS gets this free via cqmin. */
-const marginPx  = (W,H) => tokenPx(S.grid.margin, TOKENS.grid.basis, W, H);
-const gutterPx  = (W,H) => tokenPx(S.grid.gutter, TOKENS.grid.basis, W, H);
-const marginCss = () => tokenCss(S.grid.margin, TOKENS.grid.basis);
-const gutterCss = () => tokenCss(S.grid.gutter, TOKENS.grid.basis);
-function colWidthPx(W,H){
-  const content = W - 2*marginPx(W,H);
-  return (content - (S.grid.cols-1)*gutterPx(W,H)) / S.grid.cols;
-}
-function spanPx(W,H,n){
-  n = Math.max(1, Math.min(S.grid.cols, n));
-  return n*colWidthPx(W,H) + (n-1)*gutterPx(W,H);
-}
-/* Named presets use FORMAT_LAYOUT. Odd sizes fall back to the old AR bands. */
-function measureCols(W, H){
-  const cap = S.grid.cols;
-  const L = layoutFor(W, H);
-  if (L) return Math.min(cap, Math.max(1, L.spanCols));
-  const n = Math.min(cap, S.text.spanCols);
-  const ar = W / H;
-  if (Math.abs(ar - 1) < 1e-3) return Math.min(cap, Math.max(n, FORMAT_LAYOUT['1:1'].spanCols));
-  if (ar < 1) return Math.min(cap, Math.max(n, FORMAT_LAYOUT['9:16'].spanCols));
-  if (ar < 1.5) return Math.min(cap, Math.max(n, FORMAT_LAYOUT['4:3'].spanCols));
-  return n;
-}
-/* CSS equivalent of spanPx, in container-query units. Columns divide the full
-   canvas width, so the content box is 100cqw less the margins. */
-const cssSpan = n => {
-  n = Math.max(1, Math.min(S.grid.cols, n));
-  const m = marginCss(), g = gutterCss();
-  const content = `(100cqw - 2 * ${m} - ${S.grid.cols - 1} * ${g})`;
-  return `calc(${n} * (${content} / ${S.grid.cols}) + ${n - 1} * ${g})`;
-};
-
-function renderGrid(){
-  const f = $('frame'), ov = $('gridOv');
-  f.style.setProperty('--m', marginCss());
-  f.style.setProperty('--g', gutterCss());
-  ov.classList.toggle('on', S.grid.show);
-  const inner = $('gCols');
-  if(inner.childElementCount !== S.grid.cols){
-    inner.innerHTML = '';
-    for(let i=0;i<S.grid.cols;i++) inner.appendChild(document.createElement('i'));
-  }
-}
-
-/* ---- logo ---- */
-const POS_FLEX = {
-  tl:['flex-start','flex-start'], tc:['center','flex-start'], tr:['flex-end','flex-start'],
-  bl:['flex-start','flex-end'],   bc:['center','flex-end'],   br:['flex-end','flex-end']
-};
-function logoSvg(){ return S.logo.type==='mark' ? LOGO.mark.svg : LOGO.lockup.svg; }
-function logoAR(){  return S.logo.type==='mark' ? LOGO.mark.ar  : LOGO.lockup.ar; }
-
-function renderLogo(){
-  const L = $('logoLayer');
-  if(S.logo.type === 'none'){ L.classList.remove('on'); L.innerHTML=''; return; }
-  L.classList.add('on');
-  const [j,a] = POS_FLEX[S.logo.pos];
-  L.style.justifyContent = j;
-  L.style.alignItems = a;
-  L.style.color = LOGO_COLORS[S.logo.color];
-  const len = logoHeightCss();
-  const pc = palAt(S.logo.plateIdx);
-  let style = `height:${len}`;
-  if(S.logo.scrim === 'scrim') style += ';' + scrimStyle(pc, len);
-  L.innerHTML = `<span class="scrim ${S.logo.scrim}" style="${style}">${logoSvg()}</span>`;
-}
-/* hex + alpha → rgba(), so the scrim fades to fully transparent
-   (a plain `transparent` keyword fades through black in some engines) */
-function hexA(hex, a){
-  const c = hex2rgb(hex).map(v=>Math.round(v*255));
-  return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-}
-
-/* ---- logo into a 2D canvas for PNG export ---- */
-function logoDataUrl(){
-  const svg = logoSvg().replace(/currentColor/g, LOGO_COLORS[S.logo.color]);
-  return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-}
-function drawLogo(ctx, W, H){
-  if(S.logo.type === 'none') return Promise.resolve();
-  const m = marginPx(W,H);
-  const h = logoHeightPx(W,H);
-  const w = h * logoAR();
-  const p = S.logo.pos;
-  const x = p[1]==='l' ? m : p[1]==='r' ? W - m - w : (W - w)/2;
-  const y = p[0]==='t' ? m : H - m - h;
-  const pc = palAt(S.logo.plateIdx);
-  if(S.logo.scrim === 'scrim'){
-    const cx = x + w/2, cy = y + h/2;
-    const [rx, ry] = scrimRadii(w, h);
-    // createRadialGradient is circular, so squash the space to get the ellipse
-    const g = ctx.createRadialGradient(0,0,0,0,0,ry);
-    g.addColorStop(0, pc); g.addColorStop(SCRIM_CORE/100, pc); g.addColorStop(1, hexA(pc,0));
-    ctx.save(); ctx.translate(cx,cy); ctx.scale(rx/ry, 1);
-    ctx.fillStyle = g; ctx.fillRect(-ry, -ry, ry*2, ry*2); ctx.restore();
-  }
-  return new Promise(res=>{
-    const im = new Image();
-    im.onload  = ()=>{ ctx.drawImage(im, x, y, w, h); res(); };
-    im.onerror = ()=> res();
-    im.src = logoDataUrl();
-  });
-}
-
-/* ---- controls ---- */
-seg('gCols_seg', S.grid, 'cols', v=>parseInt(v), ()=>{
-  if(S.text.spanCols > S.grid.cols) S.text.spanCols = S.grid.cols;
-  renderGrid(); renderText();
-});
-seg('zoomSeg', S, 'zoom', v=>v, ()=>setZoom(S.zoom));
-seg('lType',  S.logo, 'type',  v=>v, renderLogo);
-seg('lPos',   S.logo, 'pos',   v=>v, renderLogo);
-seg('lSize',  S.logo, 'size',  v=>v, renderLogo);
-seg('lColor', S.logo, 'color', v=>v, renderLogo);
-seg('lScrim', S.logo, 'scrim', v=>v, renderLogo);
-// backing color is always the background (ground) color — plateIdx stays 0, no selector
-
-['gMargin','gGutter'].forEach(id=>{
-  const key = id==='gMargin' ? 'margin' : 'gutter';
-  $(id).addEventListener('input', e=>{
-    S.grid[key] = parseFloat(e.target.value);
-    putDisp(id+'_v', S.grid[key]);
-    renderGrid(); renderText(); renderLogo();
-  });
-});
-$('tMeasure').addEventListener('input', e=>{
-  S.text.spanCols = parseInt(e.target.value, 10);
-  const f = formatBySize(S.canvasW, S.canvasH);
-  if(f && FORMAT_LAYOUT[f.id] && !FORMAT_LAYOUT[f.id].locked){
-    FORMAT_LAYOUT[f.id].spanCols = S.text.spanCols;
-  }
-  putDisp('tMeasure_v', S.text.spanCols);
-  renderText();
-});
-$('tGap').addEventListener('input', e=>{
-  S.text.gap = parseFloat(e.target.value);
-  putDisp('tGap_v', S.text.gap);
-  renderText();
-});
-$('gShow').onclick = ()=>{
-  S.grid.show = !S.grid.show;
-  setSwitch('gShow', S.grid.show);
-  renderGrid();
-};
-
-function initGridLogo(){
-  $('gMargin').value = S.grid.margin; putDisp('gMargin_v', S.grid.margin);
-  $('gGutter').value = S.grid.gutter; putDisp('gGutter_v', S.grid.gutter);
-  if($('tMeasure')){ $('tMeasure').value = S.text.spanCols; putDisp('tMeasure_v', S.text.spanCols); }
-  if($('tGap')){ $('tGap').value = S.text.gap; putDisp('tGap_v', S.text.gap); }
-  renderGrid(); renderLogo();
-}
-
-/* ---------- text layout ---------- */
-const escHtml = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-/* Internal storage still uses *italic* markers so tokenize/export stay simple.
-   The editor shows real italics — never the asterisks. */
-const markupToHtml = s => escHtml(s).replace(/\*([^*\n]+)\*/g, '<em>$1</em>').replace(/\n/g, '<br>');
-const palAt = i => S.colors[Math.max(0, Math.min(i|0, S.colors.length - 1))];
-const roleColor = role => palAt(S.text[role.ckey]);
-
-/* Walk a contenteditable and rebuild the *italic* markup the renderers expect. */
-function htmlToMarkup(root){
-  const inline = node => {
-    let s = '';
-    const walk = n => {
-      if(n.nodeType === 3){ s += n.nodeValue.replace(/\u00a0/g, ' ').replace(/\*/g, ''); return; }
-      if(n.nodeType !== 1) return;
-      const tag = n.tagName;
-      if(tag === 'BR'){ s += '\n'; return; }
-      const ital = tag === 'EM' || tag === 'I';
-      if(ital) s += '*';
-      [...n.childNodes].forEach(walk);
-      if(ital) s += '*';
-    };
-    [...node.childNodes].forEach(walk);
-    return s;
-  };
-  const kids = [...root.childNodes];
-  const blocks = kids.filter(n => n.nodeType === 1 && (n.tagName === 'DIV' || n.tagName === 'P'));
-  if(blocks.length){
-    return kids.map(n => {
-      if(n.nodeType === 3) return n.nodeValue.replace(/\u00a0/g, ' ').replace(/\*/g, '');
-      if(n.nodeType === 1 && n.tagName === 'BR') return '';
-      if(n.nodeType === 1) return inline(n);
-      return '';
-    }).join('\n').replace(/\n+$/,'');
-  }
-  return inline(root);
-}
-
-function setTextField(id, markup){
-  const el = $(id); if(!el) return;
-  el.innerHTML = markupToHtml(markup || '');
-}
-
-function readTextField(id){
-  const el = $(id); if(!el) return '';
-  return htmlToMarkup(el);
-}
-
-function selectionItalic(){
-  try{ return document.queryCommandState('italic'); }catch(e){ return false; }
-}
-
-function syncItalicBtn(editId){
-  const map = { tiEyebrow:'itEyebrow', tiHead:'itHead', tiBody:'itBody' };
-  const btn = $(map[editId]); if(!btn) return;
-  const on = document.activeElement === $(editId) && selectionItalic();
-  btn.setAttribute('aria-pressed', String(!!on));
-}
-
-function toggleItalic(editId){
-  const el = $(editId); if(!el) return;
-  el.focus();
-  document.execCommand('italic');
-  const key = { tiEyebrow:'eyebrow', tiHead:'head', tiBody:'body' }[editId];
-  S.text[key] = htmlToMarkup(el);
-  renderText();
-  syncItalicBtn(editId);
-}
-
-// split into words carrying an italic flag; '\n' becomes an explicit break
-function tokenize(txt, upper){
-  const out = [];
-  txt.split(/(\*[^*\n]+\*)/g).forEach(part=>{
-    if(!part) return;
-    const ital = part.length > 2 && part.startsWith('*') && part.endsWith('*');
-    const body = ital ? part.slice(1,-1) : part;
-    body.split(/(\n)/).forEach(seg=>{
-      if(seg === '\n'){ out.push({br:true}); return; }
-      seg.split(/\s+/).forEach(w=>{ if(w) out.push({text: upper ? w.toUpperCase() : w, italic: ital}); });
-    });
-  });
-  return out;
-}
-
-function activeBlocks(){
-  const T = S.text, out = [];
-  if(T.eyebrow.trim()) out.push({txt:T.eyebrow, step:T.eyebrowStep, role:ROLES.eyebrow, col:roleColor(ROLES.eyebrow)});
-  if(T.head.trim())    out.push({txt:T.head,    step:T.headStep,    role:ROLES.head,    col:roleColor(ROLES.head)});
-  if(T.body.trim())    out.push({txt:T.body,    step:T.bodyStep,    role:ROLES.body,    col:roleColor(ROLES.body)});
-  return out;
-}
-
-/* ---- live preview (DOM, container-query units) ---- */
-function renderText(){
-  const T = S.text, box = $('txt');
-  if(!T.on || !activeBlocks().length){ box.style.display = 'none'; return; }
-  box.style.display = 'flex';
-  box.style.padding = marginCss();
-  box.style.justifyContent = {left:'flex-start', center:'center', right:'flex-end'}[T.align];
-  box.style.alignItems = {top:'flex-start', middle:'center', bottom:'flex-end'}[T.vAlign];
-
-  const inner = $('txtInner');
-  inner.style.maxWidth  = cssSpan(measureCols(S.canvasW, S.canvasH));
-  inner.style.textAlign = T.align;
-  inner.style.gap       = contentCss(T.gap, TOKENS.text.basis);
-
-  const set = (id, txt, step, role)=>{
-    const el = $(id), has = txt.trim().length > 0;
-    el.style.display = has ? 'block' : 'none';
-    if(!has) return;
-    el.innerHTML = markupToHtml(role.upper ? txt.toUpperCase() : txt);
-    el.style.color         = roleColor(role);
-    el.style.fontSize      = typeCss(step, role);
-    el.style.lineHeight    = role.lead;
-    el.style.letterSpacing = role.track + 'em';
-  };
-  set('tEyebrow', T.eyebrow, T.eyebrowStep, ROLES.eyebrow);
-  set('tHead',    T.head,    T.headStep,    ROLES.head);
-  set('tBody',    T.body,    T.bodyStep,    ROLES.body);
-}
-
-/* ---- canvas layout, shared by PNG export ---- */
-const fontStr = (w, ital, size) => `${ital?'italic ':''}${w} ${size}px "Suisse BP Intl", sans-serif`;
-
-function wrapBlock(ctx, b, maxW){
-  const toks = tokenize(b.txt, b.role.upper);
-  const track = b.role.track * b.size;
-  const setFont = ital => {
-    ctx.font = fontStr(b.role.weight, ital, b.size);
-    if('letterSpacing' in ctx) ctx.letterSpacing = track + 'px';
-  };
-  const lines = [];
-  let cur = [], curW = 0;
-  const flush = ()=>{ lines.push(cur); cur = []; curW = 0; };
-  setFont(false);
-  const spaceW = ctx.measureText(' ').width + track;
-
-  toks.forEach(t=>{
-    if(t.br){ flush(); return; }
-    setFont(t.italic);
-    const w = ctx.measureText(t.text).width;
-    const sp = cur.length ? spaceW : 0;
-    if(cur.length && curW + sp + w > maxW) flush();
-    const prev = cur[cur.length - 1];
-    const lead = cur.length ? ' ' : '';
-    if(prev && prev.italic === t.italic) prev.text += lead + t.text;
-    else cur.push({text: lead + t.text, italic: t.italic});
-    curW += (cur.length > 1 || lead ? sp : 0) + w;
-  });
-  flush();
-
-  // re-measure each run so alignment is exact
-  return lines.filter(L=>L.length).map(runs=>{
-    let width = 0;
-    runs.forEach(r=>{ setFont(r.italic); r.w = ctx.measureText(r.text).width; width += r.w; });
-    return {runs, width};
-  });
-}
-
-function drawText(ctx, W, H){
-  const T = S.text;
-  if(!T.on) return;
-  const blocks = activeBlocks();
-  if(!blocks.length) return;
-
-  const pad  = marginPx(W,H);
-  const maxW = spanPx(W,H,measureCols(W,H));
-  const gap  = contentPx(T.gap, TOKENS.text.basis, W, H);
-
-  let total = 0;
-  blocks.forEach(b=>{
-    b.size  = typePx(b.step, b.role, W, H);
-    b.lines = wrapBlock(ctx, b, maxW);
-    b.lineH = b.size * b.role.lead;
-    b.h     = b.lines.length * b.lineH;
-    total  += b.h;
-  });
-  total += gap * (blocks.length - 1);
-
-  let y = T.vAlign === 'top' ? pad
-        : T.vAlign === 'bottom' ? H - pad - total
-        : (H - total) / 2;
-
-  ctx.textBaseline = 'alphabetic';
-
-  blocks.forEach((b, i)=>{
-    ctx.fillStyle = b.col;
-    const track = b.role.track * b.size;
-    b.lines.forEach(line=>{
-      // centred copy centres the measure box in the canvas (as the preview's
-      // flex layout does), not inside a box pinned to the left margin
-      let x = T.align === 'left'  ? pad
-            : T.align === 'right' ? W - pad - line.width
-            : (W - line.width) / 2;
-      const baseline = y + b.size * 0.76 + (b.lineH - b.size) / 2;
-      line.runs.forEach(r=>{
-        ctx.font = fontStr(b.role.weight, r.italic, b.size);
-        if('letterSpacing' in ctx) ctx.letterSpacing = track + 'px';
-        ctx.fillText(r.text, x, baseline);
-        x += r.w;
-      });
-      y += b.lineH;
-    });
-    if(i < blocks.length - 1) y += gap;
-  });
-  if('letterSpacing' in ctx) ctx.letterSpacing = '0px';
-}
-
-/* ---- controls ---- */
-TYPE_STEPS.forEach((label, i)=>{
-  ['szEyebrow','szHead','szBody'].forEach(id=>{
-    const o = document.createElement('option');
-    o.value = i; o.textContent = label;
-    $(id).appendChild(o);
-  });
-});
-const SZ = [['szEyebrow','eyebrowStep'], ['szHead','headStep'], ['szBody','bodyStep']];
-SZ.forEach(([id, key])=>{
-  $(id).addEventListener('change', e=>{ S.text[key] = parseInt(e.target.value); renderText(); });
-});
-const TI = [['tiEyebrow','eyebrow','itEyebrow'], ['tiHead','head','itHead'], ['tiBody','body','itBody']];
-TI.forEach(([id, key, btnId])=>{
-  const el = $(id), btn = $(btnId);
-  if(!el) return;
-  el.addEventListener('input', ()=>{
-    S.text[key] = htmlToMarkup(el);
-    renderText();
-    syncItalicBtn(id);
-  });
-  el.addEventListener('keyup', ()=> syncItalicBtn(id));
-  el.addEventListener('mouseup', ()=> syncItalicBtn(id));
-  el.addEventListener('focus', ()=> syncItalicBtn(id));
-  el.addEventListener('blur', ()=>{
-    // collapse empty editor so the placeholder shows again
-    if(!el.textContent.replace(/\u00a0/g, '').trim()) el.innerHTML = '';
-    if(btn) btn.setAttribute('aria-pressed', 'false');
-  });
-  el.addEventListener('keydown', e=>{
-    if((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'i'){
-      e.preventDefault();
-      toggleItalic(id);
-      return;
-    }
-    // eyebrow is a single line; headline/body insert a soft break
-    if(e.key === 'Enter'){
-      if(id === 'tiEyebrow'){ e.preventDefault(); return; }
-      e.preventDefault();
-      document.execCommand('insertLineBreak');
-      S.text[key] = htmlToMarkup(el);
-      renderText();
-    }
-  });
-  if(btn) btn.addEventListener('mousedown', e=>{
-    // keep selection in the editor — a click would otherwise steal focus first
-    e.preventDefault();
-    toggleItalic(id);
-  });
-});
-
-document.addEventListener('selectionchange', ()=>{
-  const id = ['tiEyebrow','tiHead','tiBody'].find(i => $(i) && $(i).contains(document.getSelection()?.anchorNode));
-  if(id) syncItalicBtn(id);
-});
-
-seg('tAlign', S.text, 'align', v=>v, ()=>{ renderText(); syncMaskToAlign(); });
-seg('tVAlign', S.text, 'vAlign', v=>v, renderText);
-
-// mask is a single on/off toggle; Auto follows text alignment, otherwise the
-// direction seg is an explicit override.
-const ALIGN_MASK = { left:'to right', center:'center', right:'to left' };
-function syncMaskDirPress(){
-  const el = $('maskDir'); if(!el) return;
-  const v = !S.maskOn ? 'none' : (S.maskFollow ? 'auto' : S.maskDir);
-  [...el.querySelectorAll('button')].forEach(x=> x.setAttribute('aria-pressed', String(x.dataset.v === v)));
-}
-function syncMaskToAlign(){
-  if(S.maskFollow) S.maskDir = S.maskOn ? (ALIGN_MASK[S.text.align] || 'to right') : 'none';
-  else if(!S.maskOn) S.maskDir = 'none';
-  syncMaskDirPress();
-  applyMask(); meta();
-}
-(function(){
-  const btn = $('maskToggle');
-  if(!btn) return;
-  setSwitch('maskToggle', S.maskOn);
-  btn.addEventListener('click', ()=>{ S.maskOn = !S.maskOn; setSwitch('maskToggle', S.maskOn); syncMaskToAlign(); });
-})();
-(function(){
-  const el = $('maskDir'); if(!el) return;
-  el.addEventListener('click', e=>{
-    const b = e.target.closest('button'); if(!b) return;
-    const v = b.dataset.v;
-    if(v === 'auto'){
-      S.maskFollow = true; S.maskOn = true;
-    } else if(v === 'none'){
-      S.maskFollow = false; S.maskOn = false; S.maskDir = 'none';
-    } else {
-      S.maskFollow = false; S.maskOn = true; S.maskDir = v;
-    }
-    setSwitch('maskToggle', S.maskOn);
-    syncMaskToAlign();
-  });
-})();
-
-$('textOn').onclick = ()=>{
-  S.text.on = !S.text.on;
-  setSwitch('textOn', S.text.on);
-  renderText();
-};
-
-// every colour dropdown tracks the live palette
-const COLOR_SELECTS = [
-  ['cEyebrow', o=>S.text, 'cEyebrow'],
-  ['cHead',    o=>S.text, 'cHead'],
-  ['cBody',    o=>S.text, 'cBody']
-];
-function syncTextColor(){
-  COLOR_SELECTS.forEach(([id, get, key])=>{
-    const sel = $(id); if(!sel) return;
-    const obj = get();
-    sel.innerHTML = '';
-    S.colors.forEach((hex, i)=>{
-      const o = document.createElement('option');
-      o.value = i;
-      /* Name the colour rather than its slot — "Mark 2" told you nothing about
-         what you were picking. The ground is flagged because copy set to it
-         disappears into the background. */
-      o.textContent = colorName(hex) + (i === 0 ? ' (bg)' : '');
-      sel.appendChild(o);
-    });
-    if(obj[key] > S.colors.length - 1) obj[key] = S.colors.length - 1;
-    sel.value = obj[key];
-  });
-  // backing always tracks the background (ground) color
-  S.logo.plateIdx = 0;
-}
-COLOR_SELECTS.forEach(([id, get, key])=>{
-  $(id).addEventListener('change', e=>{ S.text[key] = parseInt(e.target.value); renderText(); });
-});
-
-function initText(){
-  setTextField('tiEyebrow', S.text.eyebrow);
-  setTextField('tiHead', S.text.head);
-  setTextField('tiBody', S.text.body);
-  $('szEyebrow').value = S.text.eyebrowStep;
-  $('szHead').value    = S.text.headStep;
-  $('szBody').value    = S.text.bodyStep;
-  syncTextColor();
-  renderText();
-}
-
 /* ---------- accordion ---------- */
 const ICONS = {
   'Source':      '<rect x="2.5" y="3.5" width="11" height="9" rx="1.5"/><path d="M2.5 10.5 6 7.5l3 2.5 2-1.5 2.5 2"/><circle cx="10.5" cy="6" r="1"/>',
@@ -1749,9 +988,6 @@ const ICONS = {
   'Marks':       '<path d="M4 3v10M8 5v8M12 2v11"/><rect x="2.8" y="5.5" width="2.4" height="5" rx=".6"/><rect x="6.8" y="7" width="2.4" height="4" rx=".6"/><rect x="10.8" y="4.5" width="2.4" height="6" rx=".6"/>',
   'Response':    '<path d="M3 4.5h10M3 8h10M3 11.5h10"/><circle cx="6" cy="4.5" r="1.6"/><circle cx="10" cy="8" r="1.6"/><circle cx="5" cy="11.5" r="1.6"/>',
   'Colors':      '<circle cx="6" cy="6" r="3.2"/><circle cx="10" cy="6" r="3.2"/><circle cx="8" cy="10" r="3.2"/>',
-  'Guides':      '<rect x="2.5" y="2.5" width="11" height="11" rx="1"/><path d="M6.2 2.5v11M9.8 2.5v11"/>',
-  'Logo':        '<path d="M8 2.2 13 5v6l-5 2.8L3 11V5l5-2.8Z"/><rect x="6.4" y="6.4" width="3.2" height="3.2" rx=".6"/>',
-  'Text':        '<path d="M3 4V3h10v1M8 3v10M6 13h4"/>',
   'Canvas':      '<path d="M5.5 2v9.5H15M2 4.5h9.5V14"/>',
   'Export':      '<path d="M8 2.5v8M5 7.5l3 3 3-3"/><path d="M2.5 12.5v1h11v-1"/>',
   'Cursor':      '<path d="M4 2.5 12.5 9.2 8.6 9.7 7.4 13.5 4 2.5Z"/>',
@@ -1772,77 +1008,20 @@ const ICONS = {
 (function(){
   document.querySelectorAll('.rail .group > h2').forEach(h=>{
     const sec = h.parentElement;
-    /* The heading stays a heading and an inner wrapper carries the button role,
-       so the Marks lock button isn't a button nested inside another button. */
     const head = document.createElement('span');
     head.className = 'ghead';
-    [...h.childNodes].forEach(n=>{
-      if(n.nodeType === 1 && n.classList.contains('lockBtn')) return;
-      head.appendChild(n);
-    });
+    [...h.childNodes].forEach(n=> head.appendChild(n));
     h.insertBefore(head, h.firstChild);
     head.setAttribute('role','button');
     head.setAttribute('tabindex','0');
     const sync = ()=> head.setAttribute('aria-expanded', String(!sec.classList.contains('collapsed')));
     const toggle = ()=>{ sec.classList.toggle('collapsed'); sync(); };
     sync();
-    h.addEventListener('click', e=>{ if(e.target.closest('.lockBtn')) return; toggle(); });
+    h.addEventListener('click', ()=> toggle());
     head.addEventListener('keydown', e=>{
       if(e.key==='Enter' || e.key===' '){ e.preventDefault(); toggle(); }
     });
   });
-})();
-
-/* ---- Marks lock: designer default, locked until the user unlocks ---- */
-(function(){
-  const MARK_SLIDERS = ['cols','rowScale','len','weight','quant','jitter'];
-  const btn = $('marksLock');
-  const group = $('marksGroup');
-  if(!btn || !group) return;
-  function setLocked(locked){
-    btn.classList.toggle('unlocked', !locked);
-    btn.setAttribute('aria-pressed', String(locked));
-    btn.setAttribute('aria-label', locked
-      ? 'Marks are locked to the designer default. Click to unlock.'
-      : 'Marks are unlocked. Click to lock back to the designer default.');
-    btn.setAttribute('data-tip', locked
-      ? 'Default setup pattern by the designer. Ask before you change any of these values.'
-      : 'Unlocked — you are editing the designer default. Lock again to protect it.');
-    group.classList.toggle('locked', locked);
-    MARK_SLIDERS.forEach(id=>{ const el=$(id); if(el) el.disabled = locked; const vf=$(id+'_v'); if(vf) vf.disabled = locked; });
-  }
-  let locked = false;
-  setLocked(false);
-  btn.addEventListener('click', ()=>{ locked = !locked; setLocked(locked); });
-})();
-
-/* ---- Fade lock: designer default solid/fade stops ---- */
-(function(){
-  const FADE_CONTROLS = ['maskSolid','maskFade','maskToggle'];
-  const btn = $('fadeLock');
-  const group = $('fadeGroup');
-  if(!btn || !group) return;
-  function setLocked(locked){
-    btn.classList.toggle('unlocked', !locked);
-    btn.setAttribute('aria-pressed', String(locked));
-    btn.setAttribute('aria-label', locked
-      ? 'Fade is locked to the designer default. Click to unlock.'
-      : 'Fade is unlocked. Click to lock back to the designer default.');
-    btn.setAttribute('data-tip', locked
-      ? 'Default fade by the designer. Ask before you change these values.'
-      : 'Unlocked — you are editing the designer default. Lock again to protect it.');
-    group.classList.toggle('locked', locked);
-    FADE_CONTROLS.forEach(id=>{
-      const el = $(id); if(!el) return;
-      if(el.tagName === 'INPUT') el.disabled = locked;
-      const vf = $(id+'_v'); if(vf) vf.disabled = locked;
-    });
-    const dir = $('maskDir');
-    if(dir) dir.querySelectorAll('button').forEach(b=> b.disabled = locked);
-  }
-  let locked = false;
-  setLocked(false);
-  btn.addEventListener('click', e=>{ e.stopPropagation(); locked = !locked; setLocked(locked); });
 })();
 
 /* ---------- setups ---------- */
@@ -1858,20 +1037,61 @@ function snapshot(){
     cols:S.cols, rowScale:S.rowScale, len:S.len, weight:S.weight, jitter:S.jitter, quant:S.quant,
     contrast:S.contrast, bias:S.bias, grain:S.grain,
     colors:[...S.colors], weights:[...(S.weights || [])],
-    maskDir:S.maskDir, maskOn:S.maskOn, maskFollow:S.maskFollow, maskSolid:S.maskSolid, maskFade:S.maskFade,
     canvasW:S.canvasW, canvasH:S.canvasH,
     mouseMode:S.mouseMode, mouseRadius:S.mouseRadius, mouseStrength:S.mouseStrength,
-    grid:{...S.grid}, logo:{...S.logo}, text:{...S.text}, seed:S.seed, zoom:S.zoom
+    seed:S.seed
   };
 }
+/* URL-safe setup: same snapshot, but no image payload (too large for a query/hash). */
+function embedSnapshot(){
+  const d = snapshot();
+  delete d.imgData;
+  d.useImg = 0;
+  return d;
+}
+function encodeSetup(data){
+  const json = JSON.stringify(data || {});
+  const b64 = btoa(unescape(encodeURIComponent(json)));
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function decodeSetup(packed){
+  if(!packed) return null;
+  try{
+    let b64 = String(packed).replace(/-/g, '+').replace(/_/g, '/');
+    while(b64.length % 4) b64 += '=';
+    return JSON.parse(decodeURIComponent(escape(atob(b64))));
+  }catch(e){ return null; }
+}
+function embedBase(){
+  if(location.protocol === 'http:' || location.protocol === 'https:'){
+    let path = location.pathname.replace(/index\.html$/, '');
+    if(!path.endsWith('/')) path += '/';
+    return location.origin + path;
+  }
+  return 'https://alisonhu-magic.github.io/newton-shader/';
+}
+function embedUrl(data){
+  return embedBase() + '?embed=1#s=' + encodeSetup(data || embedSnapshot());
+}
+let embedLang = 'html';
+function embedSnippet(data){
+  const setup = data || embedSnapshot();
+  const src = embedUrl(setup);
+  const ar = Math.round(setup.canvasW) + ' / ' + Math.round(setup.canvasH);
+  if(embedLang === 'react'){
+    return `<iframe\n  src="${src}"\n  title="Newton field"\n  loading="lazy"\n  style={{ width: '100%', aspectRatio: '${ar}', border: 0, display: 'block' }}\n/>`;
+  }
+  return `<iframe src="${src}" title="Newton field" loading="lazy" style="width:100%;aspect-ratio:${ar.replace(/ /g,'')};border:0;display:block"></iframe>`;
+}
+function refreshEmbed(){
+  const el = $('embedCode'); if(!el) return;
+  el.value = embedSnippet();
+}
 function restore(d){
-  const skip = new Set(['grid','logo','text','colors','weights','imgData']);
+  const skip = new Set(['colors','weights','imgData']);
   Object.keys(d).forEach(k=>{ if(!skip.has(k) && k in S) S[k] = d[k]; });
   S.colors = [...(d.colors || S.colors)];
   S.weights = [...(d.weights || S.weights || [])];
-  Object.assign(S.grid, d.grid || {});
-  Object.assign(S.logo, d.logo || {});
-  Object.assign(S.text, d.text || {});
   S.imgData = d.imgData || null;
   if(d.brand) applyBrand(d.brand, { resetColors:false });
 
@@ -1898,20 +1118,11 @@ function pressSeg(id, val){
   [...el.querySelectorAll('button')].forEach(x=> x.setAttribute('aria-pressed', String(String(x.dataset.v) === String(val))));
 }
 function syncAll(){
-  syncSliders(); renderPalette(); applyMask(); meta();
+  syncSliders(); renderPalette(); meta();
   pressSeg('field', S.field);
   pressSeg('mouseMode', S.mouseMode);
-  pressSeg('gCols_seg', S.grid.cols);
-  pressSeg('lType', S.logo.type); pressSeg('lPos', S.logo.pos);
-  pressSeg('lSize', S.logo.size); pressSeg('lColor', S.logo.color); pressSeg('lScrim', S.logo.scrim);
-  pressSeg('tAlign', S.text.align); pressSeg('tVAlign', S.text.vAlign);
-  pressSeg('zoomSeg', S.zoom);
-  syncMaskToAlign();
   setSwitch('invert', !!S.invert);
-  setSwitch('textOn', S.text.on);
-  setSwitch('gShow', S.grid.show);
-  setSwitch('maskToggle', S.maskOn);
-  initGridLogo(); initText(); renderSetups(); renderLogo(); renderGrid();
+  renderSetups();
 }
 function loadSetups(){
   if(!setupsAvailable) return;
@@ -1986,16 +1197,6 @@ function dl(blob, name){
 }
 function stamp(ext){ return `newton-field-${S.field}-${Math.round(S.seed*100)}.${ext}`; }
 
-// paint the mask gradient (ground color fading out) onto a 2d context
-function paintMask(ctx, w, h){
-  if(S.maskDir==='none') return;
-  const dirs = {'to right':[0,0,w,0], 'to left':[w,0,0,0], 'to top':[0,h,0,0], 'center':[0,0,w,0]};
-  const [x0,y0,x1,y1] = dirs[S.maskDir];
-  const grad = ctx.createLinearGradient(x0,y0,x1,y1);
-  maskStops().forEach(([p,a]) => grad.addColorStop(Math.min(Math.max(p,0),100)/100, hexA(S.colors[0], a)));
-  ctx.fillStyle = grad; ctx.fillRect(0,0,w,h);
-}
-
 /* A drawing buffer the GPU can't back is silently rendered as black (and can
    cost the whole context), so a frame larger than this budget is rendered in
    tiles instead. Dimensions come from the driver; the area cap is empirical —
@@ -2032,28 +1233,13 @@ function paintField(ctx, w, h, plan = tilePlan(w, h)){
   }
 }
 
-// shader frame + mask + text + logo, baked into a fresh 2d canvas at export size
+// shader frame baked into a fresh 2d canvas at export size
 async function composite(w,h){
   const out = document.createElement('canvas');
   out.width = w; out.height = h;
   const ctx = out.getContext('2d');
   paintField(ctx, w, h);
-  paintMask(ctx, w, h);
-  drawText(ctx, w, h);
-  await drawLogo(ctx, w, h);
   return out;
-}
-
-// mask + text + logo only, on a transparent canvas — the static overlay we
-// stamp on top of every recorded shader frame
-async function buildOverlay(w,h){
-  const ov = document.createElement('canvas');
-  ov.width = w; ov.height = h;
-  const ctx = ov.getContext('2d');
-  paintMask(ctx, w, h);
-  drawText(ctx, w, h);
-  await drawLogo(ctx, w, h);
-  return ov;
 }
 
 /* Every export takes over the canvas size and the clock, so the live loop has to
@@ -2066,7 +1252,6 @@ async function runExport(label, job){
   btn.disabled = true; btn.textContent = label + '…';
   const pw = canvas.width, ph = canvas.height;
   try{
-    try{ await document.fonts.ready; }catch(e){}
     await job();
   } catch(err){
     console.error(err);
@@ -2160,7 +1345,6 @@ function exportVideo(){
     const durSec = Math.max(0.5, Math.min(60, parseFloat($('vidDur').value) || 5));
     const loopOn = $('vidLoop').getAttribute('aria-checked') === 'true';
     const [w,h] = exportSize();
-    const overlay = await buildOverlay(w,h);
 
     const out = document.createElement('canvas');
     out.width = w; out.height = h;
@@ -2192,7 +1376,6 @@ function exportVideo(){
           const el = Math.min(now - t0, total);
           clock = videoClock(startClock, el / total, rate, durSec, loopOn);
           paintField(octx, w, h);
-          octx.drawImage(overlay, 0, 0);
           if(el < total) requestAnimationFrame(frame);
           else rec.stop();
         } catch(err){
@@ -2207,14 +1390,45 @@ function exportVideo(){
 
 /* ---- export controls ---- */
 let expFmt = 'png';
-function setExportLabel(){ $('exportBtn').textContent = 'Export ' + expFmt.toUpperCase(); }
+function setExportLabel(){
+  $('exportBtn').textContent = expFmt === 'embed' ? 'Copy embed' : 'Export ' + expFmt.toUpperCase();
+}
+function syncExportOpts(){
+  $('vidOpts').hidden = expFmt !== 'mp4';
+  if($('embedOpts')) $('embedOpts').hidden = expFmt !== 'embed';
+  if(expFmt === 'embed') refreshEmbed();
+}
 $('expFmt').addEventListener('click', e=>{
   const b = e.target.closest('button'); if(!b) return;
   [...$('expFmt').querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed', String(x===b)));
   expFmt = b.dataset.v;
-  $('vidOpts').hidden = expFmt !== 'mp4';
+  syncExportOpts();
   if(!exporting) setExportLabel();
 });
+if($('embedLang')){
+  $('embedLang').addEventListener('click', e=>{
+    const b = e.target.closest('button'); if(!b) return;
+    [...$('embedLang').querySelectorAll('button')].forEach(x=>x.setAttribute('aria-pressed', String(x===b)));
+    embedLang = b.dataset.v;
+    refreshEmbed();
+  });
+}
+async function copyEmbed(){
+  refreshEmbed();
+  const text = $('embedCode') ? $('embedCode').value : embedSnippet();
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText) await navigator.clipboard.writeText(text);
+    else {
+      const el = $('embedCode');
+      if(el){ el.focus(); el.select(); document.execCommand('copy'); }
+    }
+    toast('Embed copied');
+  }catch(err){
+    const el = $('embedCode');
+    if(el){ el.focus(); el.select(); }
+    toast('Copy the snippet from the box');
+  }
+}
 $('vidLoop').onclick = ()=>{
   const on = $('vidLoop').getAttribute('aria-checked') !== 'true';
   setSwitch('vidLoop', on);
@@ -2223,6 +1437,7 @@ $('exportBtn').onclick = ()=>{
   if(expFmt==='png') exportPNG();
   else if(expFmt==='webp') exportWEBP();
   else if(expFmt==='svg') exportSVG();
+  else if(expFmt==='embed') copyEmbed();
   else exportVideo();
 };
 
@@ -2236,19 +1451,12 @@ window.__NF = {
   isExporting: ()=> exporting,
   isContextLost: ()=> contextLost,
   limits: ()=> ({ tileDim: tileLimit(), tileArea: TILE_AREA_BUDGET, dimMin: DIM_MIN, dimMax: DIM_MAX, areaMax: AREA_MAX }),
-  fitFrameWidth, previewDpr, setZoom, setCanvasSize, setFormatLayout, layoutStats, tilePlan, clampDim, axisMax, maskStops, maskGradient,
+  fitFrameWidth, previewDpr, setCanvasSize, tilePlan, clampDim, axisMax,
   toShares, setWeight, normaliseWeights, colorName, applyBrand, snapshot, restore, BRANDS,
-  contrastRatio, aaBadge, stepPct, roleSize, tokenize, spanPx, colWidthPx, videoClock,
-  BASELINE, TOKENS, FORMATS, FORMAT_LAYOUT, formatBySize, isLockedBaseline, ratioScale, refPx, tokenPx, tokenCss, typePx, logoHeightPx, logoAR, measureCols,
-  markupToHtml, htmlToMarkup, setTextField, readTextField,
-  composite, paintField, activeBlocks,
+  contrastRatio, aaBadge, videoClock,
+  BASELINE, FORMATS, formatBySize,
+  composite, paintField,
+  encodeSetup, decodeSetup, embedSnapshot, embedUrl, embedSnippet,
   render(){ sizeCanvas(); draw(canvas.width, canvas.height); }
 };
-Object.defineProperties(window.__NF, {
-  SCALE_WIDE:        { enumerable:true, get(){ return FORMAT_LAYOUT['2:1'].scale; } },
-  SCALE_WIDESCREEN:  { enumerable:true, get(){ return FORMAT_LAYOUT['16:9'].scale; } },
-  SCALE_CLASSIC:     { enumerable:true, get(){ return FORMAT_LAYOUT['4:3'].scale; } },
-  SCALE_SQUARE:      { enumerable:true, get(){ return FORMAT_LAYOUT['1:1'].scale; } },
-  SCALE_TALL:        { enumerable:true, get(){ return FORMAT_LAYOUT['9:16'].scale; } }
-});
 

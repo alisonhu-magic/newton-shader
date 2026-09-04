@@ -42,7 +42,7 @@ test.describe('boot', () => {
   test('exposes the designer controls', async ({ page }) => {
     await open(page);
     const missing = await page.evaluate(() =>
-      ['mouseMode', 'contrast', 'bias', 'grain', 'tMeasure', 'tGap', 'cw', 'ch',
+      ['mouseMode', 'contrast', 'bias', 'grain', 'cw', 'ch',
        'setupSave', 'addColor', 'exportBtn', 'brandSel']
         .filter(id => !document.getElementById(id)));
     expect(missing).toEqual([]);

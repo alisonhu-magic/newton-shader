@@ -5,7 +5,7 @@ test.beforeEach(async ({ page }) => { await open(page); await expandAll(page); }
 
 test.describe('export', () => {
   test('the button label follows the chosen format', async ({ page }) => {
-    for (const [fmt, label] of [['png', /PNG/i], ['webp', /WEBP/i], ['svg', /SVG/i], ['mp4', /MP4|video/i]]) {
+    for (const [fmt, label] of [['png', /PNG/i], ['webp', /WEBP/i], ['svg', /SVG/i], ['mp4', /MP4|video/i], ['embed', /embed/i]]) {
       await pickSeg(page, 'expFmt', fmt);
       await settle(page);
       expect(await page.textContent('#exportBtn'), `format ${fmt}`).toMatch(label);
@@ -215,5 +215,61 @@ test.describe('export', () => {
     expect(r.blob, 'no video produced: ' + r.toast).not.toBeNull();
     expect(r.blob.size).toBeGreaterThan(1000);
     expect(r.blob.type).toMatch(/video|mp4|webm/);
+  });
+
+  test('embed options appear only for the embed format', async ({ page }) => {
+    await pickSeg(page, 'expFmt', 'png');
+    await settle(page);
+    expect(await page.evaluate(() => getComputedStyle(document.getElementById('embedOpts')).display)).toBe('none');
+    await pickSeg(page, 'expFmt', 'embed');
+    await settle(page);
+    expect(await page.evaluate(() => getComputedStyle(document.getElementById('embedOpts')).display)).not.toBe('none');
+    expect(await page.evaluate(() => getComputedStyle(document.getElementById('vidOpts')).display)).toBe('none');
+    expect(await page.textContent('#exportBtn')).toMatch(/copy embed/i);
+  });
+
+  test('embed snippet carries the current setup and restores it', async ({ page }) => {
+    await page.evaluate(() => {
+      Object.assign(window.__NF.S, { field: 3, freq: 11, mouseMode: 2, canvasW: 1440, canvasH: 480 });
+    });
+    const packed = await page.evaluate(() => window.__NF.encodeSetup(window.__NF.embedSnapshot()));
+    const back = await page.evaluate(s => window.__NF.decodeSetup(s), packed);
+    expect(back.field).toBe(3);
+    expect(back.freq).toBe(11);
+    expect(back.mouseMode).toBe(2);
+    expect(back.useImg).toBe(0);
+    expect(back.imgData).toBeUndefined();
+
+    await pickSeg(page, 'expFmt', 'embed');
+    const html = await page.evaluate(() => window.__NF.embedSnippet());
+    expect(html).toContain('iframe');
+    expect(html).toContain('embed=1');
+    expect(html).toContain('#s=');
+    expect(html).toContain('aspect-ratio:1440/480');
+
+    await pickSeg(page, 'embedLang', 'react');
+    const jsx = await page.evaluate(() => window.__NF.embedSnippet());
+    expect(jsx).toContain('aspectRatio');
+    expect(jsx).toContain('1440 / 480');
+  });
+});
+
+test.describe('embed player', () => {
+  test('?embed=1 hides chrome and a packed setup loads', async ({ page }) => {
+    await open(page);
+    const packed = await page.evaluate(() => {
+      const data = { ...window.__NF.embedSnapshot(), field: 5, freq: 4, mouseMode: 1, canvasW: 800, canvasH: 400 };
+      return window.__NF.encodeSetup(data);
+    });
+    await page.goto(`/index.html?embed=1#s=${packed}`);
+    await expect(page.locator('#gl')).toHaveClass(/ready/, { timeout: 15_000 });
+    expect(await page.evaluate(() => document.body.classList.contains('embed'))).toBe(true);
+    expect(await page.evaluate(() => getComputedStyle(document.querySelector('.rail')).display)).toBe('none');
+    const s = await state(page);
+    expect(s.field).toBe(5);
+    expect(s.freq).toBe(4);
+    expect(s.mouseMode).toBe(1);
+    expect(s.canvasW).toBe(800);
+    expect(s.canvasH).toBe(400);
   });
 });

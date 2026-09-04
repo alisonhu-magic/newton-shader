@@ -179,25 +179,6 @@ test.describe('axisMax', () => {
   });
 });
 
-test.describe('maskStops', () => {
-  test('edge fade runs solid then fades to the far edge', async ({ page }) => {
-    await page.evaluate(() => { Object.assign(window.__NF.S, { maskDir: 'to right', maskSolid: 30, maskFade: 70 }); });
-    expect(await call(page, 'maskStops', [])).toEqual([[0, 1], [30, 1], [70, 0], [100, 0]]);
-  });
-
-  test('centre fade is symmetric around the middle', async ({ page }) => {
-    await page.evaluate(() => { Object.assign(window.__NF.S, { maskDir: 'center', maskSolid: 30, maskFade: 70 }); });
-    expect(await call(page, 'maskStops', [])).toEqual([[15, 0], [35, 1], [65, 1], [85, 0]]);
-  });
-
-  test('stops stay monotonic even if fade end is below the solid stop', async ({ page }) => {
-    await page.evaluate(() => { Object.assign(window.__NF.S, { maskDir: 'to right', maskSolid: 80, maskFade: 10 }); });
-    const stops = await call(page, 'maskStops', []);
-    const offs = stops.map(s => s[0]);
-    expect(offs).toEqual([...offs].sort((a, b) => a - b));
-  });
-});
-
 test.describe('contrastRatio', () => {
   test('matches known WCAG values', async ({ page }) => {
     expect(await call(page, 'contrastRatio', ['#FFFFFF', '#000000'])).toBeCloseTo(21, 2);
@@ -219,51 +200,6 @@ test.describe('contrastRatio', () => {
   });
 });
 
-test.describe('stepPct', () => {
-  test('maps the four type steps', async ({ page }) => {
-    expect(await call(page, 'stepPct', [0])).toBe(1.2);
-    expect(await call(page, 'stepPct', [3])).toBe(5.0);
-  });
-
-  test('clamps indices from older 8-step setups', async ({ page }) => {
-    expect(await call(page, 'stepPct', [7])).toBe(5.0);
-    expect(await call(page, 'stepPct', [-3])).toBe(1.2);
-  });
-});
-
-test.describe('tokenize', () => {
-  test('splits words and flags *italic* runs', async ({ page }) => {
-    expect(await call(page, 'tokenize', ['a *b c* d', false])).toEqual([
-      { text: 'a', italic: false },
-      { text: 'b', italic: true },
-      { text: 'c', italic: true },
-      { text: 'd', italic: false },
-    ]);
-  });
-
-  test('turns newlines into explicit breaks', async ({ page }) => {
-    expect(await call(page, 'tokenize', ['a\nb', false])).toEqual([
-      { text: 'a', italic: false }, { br: true }, { text: 'b', italic: false },
-    ]);
-  });
-
-  test('uppercases when the role asks for it', async ({ page }) => {
-    expect(await call(page, 'tokenize', ['ab', true])).toEqual([{ text: 'AB', italic: false }]);
-  });
-
-  test('leaves an unmatched asterisk as literal text', async ({ page }) => {
-    expect(await call(page, 'tokenize', ['a *b', false])).toEqual([
-      { text: 'a', italic: false }, { text: '*b', italic: false },
-    ]);
-  });
-
-  test('collapses runs of whitespace', async ({ page }) => {
-    expect(await call(page, 'tokenize', ['  a   b  ', false])).toEqual([
-      { text: 'a', italic: false }, { text: 'b', italic: false },
-    ]);
-  });
-});
-
 test.describe('videoClock', () => {
   test('advances linearly when loop is off', async ({ page }) => {
     expect(await call(page, 'videoClock', [0, 0, 1, 4, false])).toBe(0);
@@ -274,27 +210,5 @@ test.describe('videoClock', () => {
     expect(await call(page, 'videoClock', [5, 0, 1, 4, true])).toBe(5);
     expect(await call(page, 'videoClock', [5, 0.5, 1, 4, true])).toBe(7);   // peak
     expect(await call(page, 'videoClock', [5, 1, 1, 4, true])).toBe(5);     // seamless
-  });
-});
-
-test.describe('grid geometry', () => {
-  test('column spans add up to the content width', async ({ page }) => {
-    const r = await page.evaluate(() => {
-      const N = window.__NF;
-      N.S.grid.cols = 12; N.S.grid.margin = 6; N.S.grid.gutter = 1.5;
-      const W = 1920, H = 640;
-      return { full: N.spanPx(W, H, 12), content: W - 2 * (6 / 100 * Math.min(W, H)) };
-    });
-    expect(r.full).toBeCloseTo(r.content, 6);
-  });
-
-  test('span is clamped to the available columns', async ({ page }) => {
-    const r = await page.evaluate(() => {
-      const N = window.__NF;
-      N.S.grid.cols = 12;
-      return [N.spanPx(1920, 640, 99), N.spanPx(1920, 640, 12), N.spanPx(1920, 640, 0), N.spanPx(1920, 640, 1)];
-    });
-    expect(r[0]).toBeCloseTo(r[1], 6);
-    expect(r[2]).toBeCloseTo(r[3], 6);
   });
 });

@@ -26,54 +26,10 @@ test.describe('rail sections', () => {
     expect(await head.getAttribute('aria-expanded')).toBe(before);
   });
 
-  test('the lock button inside a header does not toggle the section', async ({ page }) => {
-    await open(page);
-    const head = page.locator('#marksGroup > h2 .ghead');
-    const expanded = await head.getAttribute('aria-expanded');
-    await page.click('#marksLock');
-    await settle(page);
-    expect(await head.getAttribute('aria-expanded')).toBe(expanded);
-  });
 });
 
-test.describe('marks lock', () => {
-  test('starts unlocked so designers can edit immediately', async ({ page }) => {
-    await open(page);
-    expect(await page.getAttribute('#marksLock', 'aria-pressed')).toBe('false');
-    const disabled = await page.evaluate(() =>
-      [...document.querySelectorAll('#marksGroup input[type=range]')].every(i => i.disabled));
-    expect(disabled).toBe(false);
-  });
-
-  test('locking disables the sliders and unlocking enables them again', async ({ page }) => {
-    await open(page);
-    await page.click('#marksLock');
-    await settle(page);
-    expect(await page.getAttribute('#marksLock', 'aria-pressed')).toBe('true');
-    expect(await page.evaluate(() =>
-      [...document.querySelectorAll('#marksGroup input[type=range]')].every(i => i.disabled))).toBe(true);
-
-    await page.click('#marksLock');
-    await settle(page);
-    expect(await page.getAttribute('#marksLock', 'aria-pressed')).toBe('false');
-    expect(await page.evaluate(() =>
-      [...document.querySelectorAll('#marksGroup input[type=range]')].some(i => !i.disabled))).toBe(true);
-  });
-
-  test('a locked slider is unreachable by keyboard or pointer', async ({ page }) => {
-    await open(page);
-    await expandAll(page);
-    await page.click('#marksLock');
-    await settle(page);
-    const before = (await state(page)).cols;
-    await expect(page.locator('#cols')).toBeDisabled();
-    await page.locator('#cols').focus();          // a no-op while disabled
-    await page.keyboard.press('ArrowRight');
-    await settle(page);
-    expect((await state(page)).cols).toBe(before);
-  });
-
-  test('unlocking then moving a slider does change the render', async ({ page }) => {
+test.describe('marks', () => {
+  test('moving a slider changes density', async ({ page }) => {
     await open(page);
     await expandAll(page);
     const before = (await state(page)).cols;
@@ -217,7 +173,7 @@ test.describe('accessibility structure', () => {
   test('icon-only controls have accessible names', async ({ page }) => {
     await open(page);
     const unnamed = await page.evaluate(() =>
-      [...document.querySelectorAll('#lPos button, .tbtn, #marksLock')]
+      [...document.querySelectorAll('.tbtn')]
         .filter(b => !(b.getAttribute('aria-label') || '').trim())
         .map(b => b.id || b.dataset.v));
     expect(unnamed).toEqual([]);

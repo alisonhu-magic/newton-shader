@@ -50,7 +50,7 @@ test('render output matches the committed baseline', async ({ page }) => {
     hashes['field' + field] = hash(url);
   }
 
-  // full composite (field + mask + copy + logo) through the real export path
+  // full composite (field only) through the real export path
   for (const [w, h] of EXPORT_SIZES) {
     const url = await page.evaluate(async ([W, H]) => {
       window.__NF.setCanvasSize(W, H);

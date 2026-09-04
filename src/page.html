@@ -79,9 +79,6 @@
     flex:1; display:grid; place-items:center;
     padding:var(--s7) var(--s5); min-height:0; overflow:hidden;
   }
-  .canvas-wrap.zoomed{overflow:auto}
-  /* 1:1 sizing is set in px by fitFrame() and must outrank the fit-mode cap */
-  .canvas-wrap.zoomed .frame{max-width:none}
   /* Width is set by fitFrame() so the aspect-ratio-derived height always fits
      the stage; the CSS values are the pre-first-frame fallback. */
   .frame{
@@ -92,7 +89,6 @@
   }
   #gl{display:block; width:100%; height:auto; opacity:0; transition:opacity .4s ease-in-out}
   #gl.ready{opacity:1}
-  .mask{position:absolute; inset:0; pointer-events:none}
   /* floating canvas toolbar (Reseed / Pause) — appears on hover */
   .stagebar{position:absolute; top:10px; right:10px; display:flex; gap:6px; z-index:6;
     opacity:0; transform:translateY(-4px); pointer-events:none;
@@ -150,9 +146,6 @@
     transform:rotate(45deg); transition:transform .18s ease;
   }
   .group.collapsed > h2::after{transform:rotate(-45deg)}
-  /* Marks header: lock stays flush-right and tight against the collapse arrow
-     (only the lock keeps margin-left:auto; the chevron sits right beside it) */
-  #marksGroup > h2::after{margin-left:-2px}
   .row{display:flex; align-items:center; justify-content:space-between; gap:var(--s3); margin-bottom:var(--s2)}
   label.lbl{font-size:14px; font-weight:500; color:var(--gray-700)}
   .val{font-size:14px; color:var(--gray-600); min-width:56px; text-align:right; font-variant-numeric:tabular-nums}
@@ -162,8 +155,6 @@
     padding:2px 6px; border:1px solid transparent; border-radius:var(--radius-sm); transition:border-color .12s ease}
   input.val:hover{border-color:var(--gray-200); background:var(--gray-25)}
   input.val:focus{border-color:var(--brand-300); box-shadow:var(--ring); background:#fff; color:var(--gray-900)}
-  input.val:disabled{color:var(--gray-400); cursor:not-allowed}
-  input.val:disabled:hover{border-color:transparent; background:none}
   /* toggle switch (on/off boolean controls) */
   .switch{all:unset; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between;
     gap:var(--s3); width:100%; cursor:pointer; padding:8px 12px; background:#fff;
@@ -199,40 +190,6 @@
   input[type=range]:focus-visible::-moz-range-thumb{box-shadow:var(--ring)}
   .slider{margin-bottom:0}
   .slider .row{margin-bottom:0}
-
-  /* locked slider group */
-  input[type=range]:disabled{cursor:not-allowed}
-  input[type=range]:disabled::-webkit-slider-thumb{border-color:var(--gray-300); background:var(--gray-100); cursor:not-allowed}
-  input[type=range]:disabled::-moz-range-thumb{border-color:var(--gray-300); background:var(--gray-100); cursor:not-allowed}
-  .group.locked input[type=range]{opacity:.6}
-  .group.locked label.lbl, .group.locked .val{color:var(--gray-400)}
-  #fadeGroup.locked input[type=range]{opacity:.6}
-  #fadeGroup.locked label.lbl, #fadeGroup.locked .val{color:var(--gray-400)}
-  #fadeGroup.locked .switch{opacity:.6; pointer-events:none}
-
-  /* lock toggle in section header */
-  .lockBtn{
-    margin-left:auto; flex:none; display:inline-flex; align-items:center; justify-content:center;
-    width:26px; height:26px; padding:0; border:1px solid var(--gray-200);
-    background:var(--gray-50); color:var(--gray-500); border-radius:var(--radius-sm);
-    cursor:pointer; position:relative; transition:background .12s ease, color .12s ease, border-color .12s ease;
-  }
-  .lockBtn:hover{background:var(--gray-100); color:var(--gray-700)}
-  .group > h2 .lockBtn svg{width:14px; height:14px; color:inherit}
-  .lockBtn .ic-open{display:none}
-  .lockBtn.unlocked{color:var(--brand-600); border-color:var(--brand-200); background:var(--brand-25)}
-  .lockBtn.unlocked .ic-closed{display:none}
-  .lockBtn.unlocked .ic-open{display:block}
-  .lockBtn[data-tip]::after{
-    content:attr(data-tip); position:absolute; top:calc(100% + 8px); right:0;
-    width:224px; padding:8px 10px; text-align:left; white-space:normal;
-    background:var(--gray-900); color:#fff; font-size:12px; font-weight:400; line-height:1.4;
-    border-radius:var(--radius-md); box-shadow:var(--shadow-lg);
-    opacity:0; visibility:hidden; transform:translateY(-2px);
-    transition:opacity .12s ease, transform .12s ease, visibility .12s ease;
-    pointer-events:none; z-index:30;
-  }
-  .lockBtn:hover::after, .lockBtn:focus-visible::after{opacity:1; visibility:visible; transform:translateY(0)}
 
   /* toggle chips (button group) */
   /* field type visual picker (Canva-style thumbnails) */
@@ -366,33 +323,6 @@
   .palroles .slider{margin-top:var(--s2)}
   .palroles label.lbl{display:flex; align-items:center; gap:8px}
   .palroles .dot.sm{width:12px; height:12px; flex:none; border-radius:999px; display:inline-block; border:1px solid rgba(16,24,40,.12)}
-  /* ---- text overlay (uses container-query units so preview == export) ---- */
-  .frame{container-type:size}
-  .txt{position:absolute; inset:0; display:flex; pointer-events:none;
-       font-family:'Suisse BP Intl', Inter, sans-serif; font-kerning:normal}
-  .txt .inner{display:flex; flex-direction:column; width:100%}
-  .txt p, .txt h1{margin:0}
-  .t-eyebrow{font-weight:500; text-transform:uppercase}
-  .t-head{font-weight:300}
-  .t-body{font-weight:400}
-  .txt em{font-style:italic}
-
-  /* ---- grid guide + logo ---- */
-  .gridov{position:absolute; inset:0; pointer-events:none; display:none;
-          padding:var(--m); box-sizing:border-box}
-  .gridov.on{display:block}
-  .gridov .ginner{display:flex; height:100%; gap:var(--g);
-          outline:1px solid rgba(240,68,56,.9); outline-offset:0}
-  .gridov .ginner i{flex:1; background:rgba(240,68,56,.30); outline:1px solid rgba(240,68,56,.85)}
-  .logo{position:absolute; inset:0; pointer-events:none; padding:var(--m);
-        box-sizing:border-box; display:none}
-  .logo.on{display:flex}
-  .logo svg{display:block; height:100%; width:auto}
-  .logo .slot{display:block}
-
-  /* ---- logo scrim ---- */
-  .logo .scrim{display:flex; align-items:center; justify-content:center; box-sizing:content-box}
-
   /* ---- setups ---- */
   .saverow{display:grid; grid-template-columns:1fr auto; gap:var(--s2)}
   .saverow input{
@@ -414,50 +344,19 @@
   .srow .rm{all:unset; cursor:pointer; color:var(--gray-400); font-size:14px; padding:6px 10px}
   .srow .rm:hover{color:var(--gray-700)}
   #setupFile{display:none}
+  .embedcode{
+    all:unset; box-sizing:border-box; display:block; width:100%; min-height:92px;
+    padding:9px 12px; background:var(--gray-25); border:1px solid var(--gray-200);
+    border-radius:var(--radius-md); font-family:ui-monospace,"SF Mono",Menlo,monospace;
+    font-size:11px; line-height:1.45; color:var(--gray-700); white-space:pre; overflow:auto;
+  }
+  .embedcode:focus-visible{border-color:var(--brand-300); box-shadow:var(--ring)}
 
   /* ---- section icons ---- */
   .group > h2{display:flex; align-items:center; gap:8px}
-  /* carries the collapse button semantics so the Marks lock button is never
-     nested inside another button (see the accordion wiring) */
   .group > h2 .ghead{display:flex; align-items:center; gap:8px; min-width:0}
   .group > h2 .ghead:focus-visible{outline:2px solid var(--brand-500); outline-offset:3px; border-radius:var(--radius-sm)}
   .group > h2 svg{flex:none; width:16px; height:16px; color:var(--gray-400)}
-  .hgrp{display:flex; gap:6px}
-  select.sz.clr{min-width:58px}
-
-  /* ---- text controls ---- */
-  .tfield{display:grid; gap:6px; margin-bottom:var(--s3)}
-  .tfield .thead{display:flex; align-items:center; justify-content:space-between; gap:var(--s2)}
-  .tfield label{font-size:14px; font-weight:500; color:var(--gray-700)}
-  .tfield .tedit{
-    all:unset; box-sizing:border-box; display:block; width:100%; min-height:38px;
-    padding:9px 12px; background:#fff; border:1px solid var(--gray-300);
-    border-radius:var(--radius-md); box-shadow:var(--shadow-xs);
-    font-family:'Suisse BP Intl', Inter, sans-serif; font-size:14px; color:var(--gray-900);
-    line-height:1.4; white-space:pre-wrap; word-break:break-word; cursor:text;
-  }
-  .tfield .tedit.multi{min-height:72px}
-  .tfield .tedit:focus-visible{border-color:var(--brand-300); box-shadow:var(--ring)}
-  .tfield .tedit:empty:before{
-    content:attr(data-placeholder); color:var(--gray-400); pointer-events:none;
-  }
-  .tfield .tedit em, .tfield .tedit i{font-style:italic}
-  .fmt{
-    all:unset; box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center;
-    width:28px; height:28px; cursor:pointer; background:#fff;
-    border:1px solid var(--gray-300); border-radius:var(--radius-md); box-shadow:var(--shadow-xs);
-    font-family:Georgia, 'Times New Roman', serif; font-size:14px; font-style:italic; font-weight:700;
-    color:var(--gray-700); line-height:1;
-  }
-  .fmt:hover{background:var(--gray-50)}
-  .fmt:focus-visible{border-color:var(--brand-300); box-shadow:var(--ring)}
-  .fmt[aria-pressed=true]{color:var(--brand-700); border-color:var(--brand-300); background:var(--brand-50)}
-  select.sz{
-    all:unset; box-sizing:border-box; padding:5px 9px; cursor:pointer; background:#fff;
-    border:1px solid var(--gray-300); border-radius:var(--radius-md); box-shadow:var(--shadow-xs);
-    font-size:12px; font-weight:600; color:var(--gray-700); text-align:center;
-  }
-  select.sz:focus-visible{border-color:var(--brand-300); box-shadow:var(--ring)}
   .note{font-size:12px; color:var(--gray-500); line-height:1.45; margin:0; letter-spacing:.002em}
   .note b{font-weight:600; color:var(--gray-600)}
   .note code{font-size:11px; padding:0 4px}
@@ -490,23 +389,13 @@
       <div class="chips">
         <div class="seg" id="brandSel" role="group" aria-label="Brand">
           <button type="button" data-v="labs" aria-pressed="true">Labs</button>
-          <button type="button" data-v="foundation" disabled title="Foundation branding is reserved — palette and logos will land here later">Foundation<span class="brandsoon">soon</span></button>
+          <button type="button" data-v="foundation" disabled title="Foundation branding is reserved — palette will land here later">Foundation<span class="brandsoon">soon</span></button>
         </div>
       </div>
     </header>
     <div class="canvas-wrap">
       <div class="frame" id="frame">
         <canvas id="gl" role="img" aria-label="Generated Newton field pattern preview"></canvas>
-        <div class="mask" id="mask"></div>
-        <div class="logo" id="logoLayer"></div>
-        <div class="gridov" id="gridOv"><div class="ginner" id="gCols"></div></div>
-        <div class="txt" id="txt">
-          <div class="inner" id="txtInner">
-            <p class="t-eyebrow" id="tEyebrow"></p>
-            <h1 class="t-head" id="tHead"></h1>
-            <p class="t-body" id="tBody"></p>
-          </div>
-        </div>
         <div class="stagebar">
           <button class="tbtn" id="pause" type="button" aria-pressed="false" title="Pause / play" aria-label="Pause or play the animation">
             <svg class="ic-pause" viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="1"/><rect x="9" y="3" width="3" height="10" rx="1"/></svg>
@@ -539,38 +428,7 @@
         <div class="x">×</div>
         <div class="field"><label for="ch">Height</label><input id="ch" type="number" min="16" max="8192" step="1" value="640"></div>
       </div>
-      <p class="note">Presets fill width and height. Type any size up to 8192px per side (33 megapixels). What you set here is the export size.</p>
-      <div style="height:var(--s3)"></div>
-      <label class="lbl" style="display:block; margin-bottom:var(--s2)">Preview</label>
-      <div class="seg" id="zoomSeg" role="group" aria-label="Preview zoom">
-        <button type="button" data-v="fit" aria-pressed="true">Fit</button>
-        <button type="button" data-v="1" aria-pressed="false">100%</button>
-      </div>
-      <p class="note" style="margin-top:var(--s3)">At <b>100%</b> one preview pixel is one export pixel, so type and logo read at their true size. The stage scrolls when the frame is larger than it.</p>
-      <div style="height:var(--s3)"></div>
-      <div class="row" style="margin-bottom:var(--s2)">
-        <label class="lbl">Fade mask</label>
-        <button class="lockBtn unlocked" id="fadeLock" type="button" aria-pressed="false" aria-label="Fade is unlocked. Click to lock." data-tip="Unlocked — lock to protect the current fade while you work elsewhere."><svg class="ic-closed" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="6.5" rx="1.4"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7"/></svg><svg class="ic-open" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="6.5" rx="1.4"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.4-.9"/></svg></button>
-      </div>
-      <div id="fadeGroup">
-        <button class="switch" id="maskToggle" role="switch" aria-checked="true">
-          <span class="switch-label">Fade mask</span>
-          <span class="switch-track"><span class="switch-knob"></span></span>
-        </button>
-        <p class="note" style="margin-top:var(--s3)">Fades the pattern behind the copy. Auto follows text alignment; override it below.</p>
-        <div style="height:var(--s3)"></div>
-        <div class="seg wrap" id="maskDir" role="group" aria-label="Fade direction">
-          <button type="button" data-v="auto" aria-pressed="true">Auto</button>
-          <button type="button" data-v="to right" aria-pressed="false">Left</button>
-          <button type="button" data-v="to left" aria-pressed="false">Right</button>
-          <button type="button" data-v="center" aria-pressed="false">Center</button>
-          <button type="button" data-v="to top" aria-pressed="false">Bottom</button>
-          <button type="button" data-v="none" aria-pressed="false">Off</button>
-        </div>
-        <div style="height:var(--s3)"></div>
-        <div class="slider"><div class="row"><label class="lbl" for="maskSolid">Solid stop</label><span class="val" id="maskSolid_v"></span></div><input id="maskSolid" type="range" min="0" max="80" step="1" value="30"></div>
-        <div class="slider"><div class="row"><label class="lbl" for="maskFade">Fade end</label><span class="val" id="maskFade_v"></span></div><input id="maskFade" type="range" min="10" max="100" step="1" value="70"></div>
-      </div>
+      <p class="note">Presets fill width and height. Type any size up to 8192px per side (33 megapixels). What you set here is the export size. The stage always fits the frame.</p>
     </section>
 
     <!-- ===== BACKGROUND ===== -->
@@ -597,7 +455,7 @@
     </section>
 
     <section class="group" id="marksGroup">
-      <h2>Marks<button class="lockBtn unlocked" id="marksLock" type="button" aria-pressed="false" aria-label="Marks are unlocked. Click to lock." data-tip="Unlocked — lock to protect the current mark settings while you work elsewhere."><svg class="ic-closed" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="6.5" rx="1.4"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7"/></svg><svg class="ic-open" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="6.5" rx="1.4"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.4-.9"/></svg></button></h2>
+      <h2>Marks</h2>
       <div class="slider"><div class="row"><label class="lbl" for="cols">Density</label><span class="val" id="cols_v"></span></div><input id="cols" type="range" min="20" max="220" step="1" value="72"></div>
       <div class="slider"><div class="row"><label class="lbl" for="rowScale">Cell aspect</label><span class="val" id="rowScale_v"></span></div><input id="rowScale" type="range" min="0.4" max="4" step="0.05" value="3.25"></div>
       <div class="slider"><div class="row"><label class="lbl" for="len">Mark length</label><span class="val" id="len_v"></span></div><input id="len" type="range" min="0.1" max="1" step="0.01" value="0.83"></div>
@@ -606,7 +464,7 @@
       <div class="slider"><div class="row"><label class="lbl" for="jitter">Jitter</label><span class="val" id="jitter_v"></span></div><input id="jitter" type="range" min="0" max="0.6" step="0.01" value="0.18"></div>
     </section>
 
-    <section class="group collapsed">
+    <section class="group">
       <h2>Response</h2>
       <div class="slider"><div class="row"><label class="lbl" for="contrast">Contrast</label><span class="val" id="contrast_v"></span></div><input id="contrast" type="range" min="0.5" max="6" step="0.05" value="1.9"></div>
       <div class="slider"><div class="row"><label class="lbl" for="bias">Threshold</label><span class="val" id="bias_v"></span></div><input id="bias" type="range" min="-0.3" max="0.9" step="0.01" value="0.18"></div>
@@ -614,7 +472,7 @@
       <p class="note" style="margin-top:var(--s3)">Contrast and threshold shape how the field becomes candles. Grain is a fine hash on the final frame.</p>
     </section>
 
-    <section class="group collapsed">
+    <section class="group">
       <h2>Cursor</h2>
       <div class="seg wrap" id="mouseMode" role="group" aria-label="Cursor interaction">
         <button type="button" data-v="0" aria-pressed="true">Off</button>
@@ -628,7 +486,7 @@
       <p class="note">Move the pointer over the canvas. Interaction is live in the preview and baked into MP4.</p>
     </section>
 
-    <section class="group collapsed">
+    <section class="group">
       <h2>Source</h2>
       <label class="drop" id="drop" for="file">
         <b id="dropLabel">Drop an image</b>
@@ -642,120 +500,8 @@
       <button class="btn" id="clearImg">Clear image</button>
     </section>
 
-    <!-- ===== CONTENT ===== -->
-    <div class="railgroup">Content</div>
-
-    <section class="group">
-      <h2>Text</h2>
-      <button class="switch" id="textOn" role="switch" aria-checked="true" style="margin-bottom:var(--s4)">
-        <span class="switch-label">Show text</span>
-        <span class="switch-track"><span class="switch-knob"></span></span>
-      </button>
-
-      <div class="tfield">
-        <div class="thead"><label for="tiEyebrow">Eyebrow</label>
-          <span class="hgrp">
-            <button type="button" class="fmt" id="itEyebrow" aria-pressed="false" aria-label="Italic" title="Italic ⌘I">I</button>
-            <select class="sz clr" id="cEyebrow" aria-label="Eyebrow color"></select>
-            <select class="sz" id="szEyebrow" aria-label="Eyebrow size"></select>
-          </span></div>
-        <div class="tedit" id="tiEyebrow" contenteditable="true" role="textbox" aria-multiline="false" aria-label="Eyebrow" data-placeholder="Authorization layer"></div>
-      </div>
-      <div class="tfield">
-        <div class="thead"><label for="tiHead">Headline</label>
-          <span class="hgrp">
-            <button type="button" class="fmt" id="itHead" aria-pressed="false" aria-label="Italic" title="Italic ⌘I">I</button>
-            <select class="sz clr" id="cHead" aria-label="Headline color"></select>
-            <select class="sz" id="szHead" aria-label="Headline size"></select>
-          </span></div>
-        <div class="tedit multi" id="tiHead" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Headline" data-placeholder="Policy, enforced before the transaction exists."></div>
-      </div>
-      <div class="tfield">
-        <div class="thead"><label for="tiBody">Body</label>
-          <span class="hgrp">
-            <button type="button" class="fmt" id="itBody" aria-pressed="false" aria-label="Italic" title="Italic ⌘I">I</button>
-            <select class="sz clr" id="cBody" aria-label="Body color"></select>
-            <select class="sz" id="szBody" aria-label="Body size"></select>
-          </span></div>
-        <div class="tedit multi" id="tiBody" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Body" data-placeholder="Optional supporting line."></div>
-      </div>
-
-      <div class="row" style="margin:var(--s4) 0 var(--s2)"><label class="lbl">Align</label></div>
-      <div class="seg" id="tAlign" role="group" aria-label="Text alignment">
-        <button data-v="left" aria-pressed="true">Left</button>
-        <button data-v="center" aria-pressed="false">Center</button>
-        <button data-v="right" aria-pressed="false">Right</button>
-      </div>
-      <div class="row" style="margin:var(--s3) 0 var(--s2)"><label class="lbl">Position</label></div>
-      <div class="seg" id="tVAlign" role="group" aria-label="Text vertical position">
-        <button data-v="top" aria-pressed="false">Top</button>
-        <button data-v="middle" aria-pressed="true">Middle</button>
-        <button data-v="bottom" aria-pressed="false">Bottom</button>
-      </div>
-
-      <div style="height:var(--s4)"></div>
-      <div class="slider"><div class="row"><label class="lbl" for="tMeasure">Measure</label><span class="val" id="tMeasure_v"></span></div><input id="tMeasure" type="range" min="1" max="12" step="1" value="7"></div>
-      <div class="slider"><div class="row"><label class="lbl" for="tGap">Stack gap</label><span class="val" id="tGap_v"></span></div><input id="tGap" type="range" min="0" max="8" step="0.1" value="1.4"></div>
-      <p class="note">Four sizes on a 1.61 scale. Measure is counted in grid columns. Select words and press <b>I</b> or <b>⌘I</b> for italic — same as Figma.</p>
-    </section>
-
-    <section class="group collapsed">
-      <h2>Logo</h2>
-      <div class="seg" id="lType" role="group" aria-label="Logo type">
-        <button data-v="none" aria-pressed="false">None</button>
-        <button data-v="mark" aria-pressed="false">Mark</button>
-        <button data-v="lockup" aria-pressed="true">Lockup</button>
-      </div>
-      <div class="row" style="margin:var(--s4) 0 var(--s2)"><label class="lbl">Placement</label></div>
-      <div class="seg wrap3" id="lPos" role="group" aria-label="Logo placement">
-        <button data-v="tl" aria-pressed="false" aria-label="Top left">↖</button>
-        <button data-v="tc" aria-pressed="false" aria-label="Top center">↑</button>
-        <button data-v="tr" aria-pressed="true" aria-label="Top right">↗</button>
-        <button data-v="bl" aria-pressed="false" aria-label="Bottom left">↙</button>
-        <button data-v="bc" aria-pressed="false" aria-label="Bottom center">↓</button>
-        <button data-v="br" aria-pressed="false" aria-label="Bottom right">↘</button>
-      </div>
-      <div class="row" style="margin:var(--s4) 0 var(--s2)"><label class="lbl">Size</label></div>
-      <div class="seg" id="lSize" role="group" aria-label="Logo size">
-        <button data-v="S" aria-pressed="false">S</button>
-        <button data-v="M" aria-pressed="true">M</button>
-        <button data-v="L" aria-pressed="false">L</button>
-        <button data-v="XL" aria-pressed="false">XL</button>
-      </div>
-      <div class="row" style="margin:var(--s4) 0 var(--s2)"><label class="lbl">Color</label></div>
-      <div class="seg" id="lColor" role="group" aria-label="Logo color">
-        <button data-v="black" aria-pressed="false">Black</button>
-        <button data-v="white" aria-pressed="true">White</button>
-        <button data-v="blue" aria-pressed="false">Blue</button>
-      </div>
-      <div class="row" style="margin:var(--s4) 0 var(--s2)"><label class="lbl">Backing</label></div>
-      <div class="seg" id="lScrim" role="group" aria-label="Logo backing">
-        <button data-v="none" aria-pressed="true">None</button>
-        <button data-v="scrim" aria-pressed="false">Scrim</button>
-      </div>
-      <p class="note" style="margin-top:var(--s3)"><b>Scrim</b> lays a soft wash of the background color behind the mark so it stays legible over a dense pattern. It fades out well past the mark and never shifts its position.</p>
-    </section>
-
-    <!-- ===== GUIDES ===== -->
-    <section class="group collapsed">
-      <h2>Guides</h2>
-      <div class="seg" id="gCols_seg" role="group" aria-label="Grid columns">
-        <button data-v="6" aria-pressed="false">6 col</button>
-        <button data-v="8" aria-pressed="false">8 col</button>
-        <button data-v="12" aria-pressed="true">12 col</button>
-      </div>
-      <div style="height:var(--s4)"></div>
-      <div class="slider"><div class="row"><label class="lbl" for="gMargin">Margin</label><span class="val" id="gMargin_v"></span></div><input id="gMargin" type="range" min="0" max="16" step="0.5" value="6"></div>
-      <div class="slider"><div class="row"><label class="lbl" for="gGutter">Gutter</label><span class="val" id="gGutter_v"></span></div><input id="gGutter" type="range" min="0" max="6" step="0.1" value="1.5"></div>
-      <button class="switch" id="gShow" role="switch" aria-checked="false">
-        <span class="switch-label">Show grid overlay</span>
-        <span class="switch-track"><span class="switch-knob"></span></span>
-      </button>
-      <p class="note" style="margin-top:var(--s3)">Margin and gutter are a share of the canvas <b>short side</b>, so whitespace holds its optical weight as the ratio changes. Text and logo both inset to this margin. Guide is preview-only.</p>
-    </section>
-
     <!-- ===== SETUPS ===== -->
-    <section class="group collapsed">
+    <section class="group">
       <h2>Setups</h2>
       <div class="saverow">
         <input type="text" id="setupName" placeholder="Name this setup" aria-label="Setup name">
@@ -778,6 +524,7 @@
         <button data-v="webp" aria-pressed="false">WebP</button>
         <button data-v="mp4" aria-pressed="false">MP4</button>
         <button data-v="svg" aria-pressed="false">SVG</button>
+        <button data-v="embed" aria-pressed="false">Embed</button>
       </div>
       <div id="vidOpts" hidden>
         <div style="height:var(--s3)"></div>
@@ -787,9 +534,20 @@
           <span class="switch-track"><span class="switch-knob"></span></span>
         </button>
       </div>
+      <div id="embedOpts" hidden>
+        <div style="height:var(--s3)"></div>
+        <div class="row" style="margin-bottom:var(--s2)"><label class="lbl">Snippet</label></div>
+        <div class="seg" id="embedLang" role="group" aria-label="Embed snippet language">
+          <button type="button" data-v="html" aria-pressed="true">HTML</button>
+          <button type="button" data-v="react" aria-pressed="false">React</button>
+        </div>
+        <div style="height:var(--s3)"></div>
+        <textarea class="embedcode" id="embedCode" readonly spellcheck="false" aria-label="Embed snippet"></textarea>
+        <p class="note" style="margin-top:var(--s3)">Drops the live field in an iframe — cursor interaction included. A source image is not packed into the URL; use a procedural field.</p>
+      </div>
       <div style="height:var(--s3)"></div>
       <button class="btn solid" id="exportBtn">Export PNG</button>
-      <p class="note" style="margin-top:var(--s3)"><b>PNG / WebP / SVG</b> bake the current frame at <span id="pngSize">1920×640</span>. <b>MP4</b> records the live animation for the set duration — with <b>Loop</b> on it ping-pongs so the clip repeats seamlessly. Browsers that can't encode MP4 will save a WEBM instead.</p>
+      <p class="note" style="margin-top:var(--s3)"><b>PNG / WebP / SVG</b> bake the current frame at <span id="pngSize">1920×640</span>. <b>MP4</b> records the live animation for the set duration — with <b>Loop</b> on it ping-pongs so the clip repeats seamlessly. <b>Embed</b> copies an iframe (or React) snippet for a site banner.</p>
     </section>
   </aside>
 </div>

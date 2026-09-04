@@ -1,5 +1,5 @@
 const { test, expect } = require('@playwright/test');
-const { open, settle, pickSeg, expandAll, state, setCanvasSize } = require('./helpers');
+const { open, settle, state, setCanvasSize } = require('./helpers');
 
 const FORMATS = [
   ['3:1',  'banner'],
@@ -125,68 +125,20 @@ test.describe('canvas size and framing', () => {
   });
 });
 
-test.describe('preview zoom', () => {
+test.describe('preview fit', () => {
   const frameW = page => page.evaluate(() => document.getElementById('frame').getBoundingClientRect().width);
 
-  test('defaults to fit, and the footer reports the scale', async ({ page }) => {
+  test('fits the stage and the footer reports the scale', async ({ page }) => {
     await open(page);
     await settle(page);
-    expect((await state(page)).zoom).toBe('fit');
     const s = await state(page);
     const pct = Math.round((await frameW(page)) / s.canvasW * 100);
     expect(await page.textContent('#zoomOut')).toBe(`${pct}%`);
     expect(pct).toBeLessThan(100);   // 1920 wide never fits the stage 1:1
   });
 
-  test('100% pins one preview pixel to one export pixel', async ({ page }) => {
+  test('the frame stays inside the stage', async ({ page }) => {
     await open(page);
-    await pickSeg(page, 'zoomSeg', '1');
-    await settle(page);
-    const s = await state(page);
-    expect(s.zoom).toBe('1');
-    expect(await frameW(page)).toBeCloseTo(s.canvasW, 0);
-    expect(await page.textContent('#zoomOut')).toBe('100%');
-  });
-
-  test('copy renders at its export size when zoomed to 100%', async ({ page }) => {
-    await open(page);
-    await pickSeg(page, 'zoomSeg', '1');
-    await settle(page);
-    const r = await page.evaluate(() => {
-      const { S, roleSize } = window.__NF;
-      const px = id => parseFloat(getComputedStyle(document.getElementById(id)).fontSize);
-      return {
-        eyebrow: px('tEyebrow'),
-        head: px('tHead'),
-        wantEyebrow: roleSize(S.text.eyebrowStep, { scale: 1.1 }) / 100 * S.canvasW,
-        wantHead: roleSize(S.text.headStep, { scale: 1 }) / 100 * S.canvasW,
-      };
-    });
-    expect(r.eyebrow).toBeCloseTo(r.wantEyebrow, 0);
-    expect(r.head).toBeCloseTo(r.wantHead, 0);
-  });
-
-  test('the oversized frame scrolls the stage, not the page', async ({ page }) => {
-    await open(page);
-    await pickSeg(page, 'zoomSeg', '1');
-    await settle(page);
-    const r = await page.evaluate(() => {
-      const w = document.querySelector('.canvas-wrap');
-      return {
-        scrollable: w.scrollWidth - w.clientWidth > 1,
-        centred: Math.abs(w.scrollLeft - (w.scrollWidth - w.clientWidth) / 2) <= 1,
-        pageScrollsX: document.documentElement.scrollWidth - window.innerWidth > 1,
-        pageScrollsY: document.documentElement.scrollHeight - window.innerHeight > 1,
-      };
-    });
-    expect(r).toEqual({ scrollable: true, centred: true, pageScrollsX: false, pageScrollsY: false });
-  });
-
-  test('switching back to fit restores the contained frame', async ({ page }) => {
-    await open(page);
-    await pickSeg(page, 'zoomSeg', '1');
-    await settle(page);
-    await pickSeg(page, 'zoomSeg', 'fit');
     await settle(page);
     const r = await page.evaluate(() => {
       const f = document.getElementById('frame').getBoundingClientRect();
@@ -196,10 +148,9 @@ test.describe('preview zoom', () => {
     expect(r).toEqual({ overflowsX: false, scrollable: false });
   });
 
-  test('the drawing buffer stays inside the driver limits at 100% on a huge frame', async ({ page }) => {
+  test('the drawing buffer stays inside the driver limits on a huge frame', async ({ page }) => {
     await open(page);
     await setCanvasSize(page, 8192, 640);
-    await pickSeg(page, 'zoomSeg', '1');
     await settle(page);
     const ok = await page.evaluate(() => {
       const c = document.getElementById('gl');
@@ -211,23 +162,3 @@ test.describe('preview zoom', () => {
   });
 });
 
-test.describe('grid overlay', () => {
-  test('toggles on and draws the configured number of columns', async ({ page }) => {
-    await open(page);
-    await expandAll(page);
-    await page.click('#gShow');
-    await settle(page);
-    expect(await page.getAttribute('#gShow', 'aria-checked')).toBe('true');
-    const shown = await page.evaluate(() => {
-      const ov = document.getElementById('gridOv');
-      return { on: ov.classList.contains('on'), cols: document.getElementById('gCols').children.length };
-    });
-    expect(shown.on).toBe(true);
-    expect(shown.cols).toBe((await state(page)).grid.cols);
-
-    await page.click('#gShow');
-    await settle(page);
-    expect(await page.getAttribute('#gShow', 'aria-checked')).toBe('false');
-    expect(await page.evaluate(() => document.getElementById('gridOv').classList.contains('on'))).toBe(false);
-  });
-});

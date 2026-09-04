@@ -32,33 +32,22 @@ const setInput = (page, id, value) => page.evaluate(([i, v]) => {
   el.dispatchEvent(new Event('input', { bubbles: true }));
 }, [id, value]);
 
-/** Commit a text field the way a blur/Enter would. Supports contenteditable copy fields. */
+/** Commit a text/number field the way a blur/Enter would. */
 const commitInput = (page, id, value) => page.evaluate(([i, v]) => {
   const el = document.getElementById(i);
-  if(el && el.isContentEditable && window.__NF?.setTextField){
-    window.__NF.setTextField(i, String(v));
-    const key = { tiEyebrow:'eyebrow', tiHead:'head', tiBody:'body' }[i];
-    if(key) window.__NF.S.text[key] = String(v);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  } else {
-    el.value = String(v);
-    el.dispatchEvent(new Event('input', { bubbles: true }));
-  }
+  el.value = String(v);
+  el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
 }, [id, value]);
 
-/** Read the current string from an input or a contenteditable copy field. */
-const fieldValue = (page, id) => page.evaluate(i => {
-  const el = document.getElementById(i);
-  if(el && el.isContentEditable && window.__NF?.readTextField) return window.__NF.readTextField(i);
-  return el.value;
-}, id);
+/** Read the current string from an input. */
+const fieldValue = (page, id) => page.evaluate(i => document.getElementById(i).value, id);
 
 /** Click a button inside a segmented control by its data-v value. */
 const pickSeg = (page, groupId, value) =>
   page.click(`#${groupId} button[data-v="${value}"]`);
 
-/** Sections in the rail start collapsed; open them all so controls are clickable. */
+/** Open any collapsed rail sections so controls are clickable. */
 const expandAll = page => page.evaluate(() => {
   document.querySelectorAll('.rail .group.collapsed > h2 .ghead').forEach(h => h.click());
 });
