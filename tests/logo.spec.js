@@ -1,0 +1,130 @@
+const { test, expect } = require('@playwright/test');
+const { open, settle, expandAll, pickSeg, state } = require('./helpers');
+
+test.beforeEach(async ({ page }) => { await open(page); await expandAll(page); });
+
+test.describe('logo', () => {
+  test('renders a mark in the frame by default', async ({ page }) => {
+    expect(await page.locator('#logoLayer svg').count()).toBeGreaterThan(0);
+    expect((await state(page)).logo.pos).toBe('tr');
+    expect(await page.locator('#lPos button[data-v="tr"]').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  test('each type swaps the artwork', async ({ page }) => {
+    const seen = new Set();
+    for (const type of ['lockup', 'mark', 'none']) {
+      await pickSeg(page, 'lType', type);
+      await settle(page);
+      expect((await state(page)).logo.type).toBe(type);
+      seen.add(await page.innerHTML('#logoLayer'));
+    }
+    expect(seen.size).toBe(3);
+  });
+
+  test('"none" clears the layer', async ({ page }) => {
+    await pickSeg(page, 'lType', 'none');
+    await settle(page);
+    expect(await page.locator('#logoLayer svg').count()).toBe(0);
+  });
+
+  test('all six placements land inside the frame', async ({ page }) => {
+    await pickSeg(page, 'lType', 'lockup');
+    for (const pos of ['tl', 'tc', 'tr', 'bl', 'bc', 'br']) {
+      await pickSeg(page, 'lPos', pos);
+      await settle(page);
+      expect((await state(page)).logo.pos).toBe(pos);
+      const inside = await page.evaluate(() => {
+        const l = document.querySelector('#logoLayer .scrim').getBoundingClientRect();
+        const f = document.getElementById('frame').getBoundingClientRect();
+        return l.left >= f.left - 1 && l.right <= f.right + 1 && l.top >= f.top - 1 && l.bottom <= f.bottom + 1;
+      });
+      expect(inside, `placement ${pos}`).toBe(true);
+    }
+  });
+
+  test('top placements sit above centre and bottom placements below', async ({ page }) => {
+    const centreOf = async pos => {
+      await pickSeg(page, 'lPos', pos);
+      await settle(page);
+      return page.evaluate(() => {
+        const l = document.querySelector('#logoLayer .scrim').getBoundingClientRect();
+        const f = document.getElementById('frame').getBoundingClientRect();
+        return (l.top + l.bottom) / 2 - (f.top + f.bottom) / 2;
+      });
+    };
+    expect(await centreOf('tl')).toBeLessThan(0);
+    expect(await centreOf('br')).toBeGreaterThan(0);
+  });
+
+  test('each colour choice changes the rendered fill', async ({ page }) => {
+    await pickSeg(page, 'lType', 'mark');
+    const seen = {};
+    for (const c of ['black', 'white', 'blue']) {
+      await pickSeg(page, 'lColor', c);
+      await settle(page);
+      expect((await state(page)).logo.color).toBe(c);
+      seen[c] = await page.evaluate(() => getComputedStyle(document.getElementById('logoLayer')).color);
+    }
+    expect(new Set(Object.values(seen)).size).toBe(3);
+  });
+
+  test('the scrim backing is added behind the mark and removed again', async ({ page }) => {
+    await pickSeg(page, 'lType', 'mark');
+    const scrimBg = () => page.evaluate(() => getComputedStyle(document.querySelector('#logoLayer .scrim')).backgroundImage);
+
+    await pickSeg(page, 'lScrim', 'none');
+    await settle(page);
+    expect(await scrimBg()).toBe('none');
+
+    await pickSeg(page, 'lScrim', 'scrim');
+    await settle(page);
+    expect((await state(page)).logo.scrim).toBe('scrim');
+    expect(await scrimBg()).toContain('gradient');
+
+    await pickSeg(page, 'lScrim', 'none');
+    await settle(page);
+    expect(await scrimBg()).toBe('none');
+  });
+
+  test('the scrim fades through the ground colour, never through black', async ({ page }) => {
+    await pickSeg(page, 'lType', 'mark');
+    await pickSeg(page, 'lScrim', 'scrim');
+    await settle(page);
+    const bg = await page.evaluate(() => getComputedStyle(document.querySelector('#logoLayer .scrim')).backgroundImage);
+    // the transparent end must carry the ground's own channels, not 0,0,0
+    const transparentStop = bg.match(/rgba\((\d+),\s*(\d+),\s*(\d+),\s*0\)/);
+    expect(transparentStop).not.toBeNull();
+    expect(transparentStop.slice(1, 4).map(Number).some(v => v > 0)).toBe(true);
+  });
+
+  test('the logo holds its baseline proportion at 3:1 and bumps off it', async ({ page }) => {
+    await pickSeg(page, 'lType', 'lockup');
+    // height is a share of the largest baseline-ratio box that fits; square
+    // uses SCALE_SQUARE, portrait uses SCALE_TALL
+    const share = async format => {
+      await page.selectOption('#format', format);
+      await settle(page);
+      return page.evaluate(() => {
+        const l = document.querySelector('#logoLayer .scrim').getBoundingClientRect();
+        const f = document.getElementById('frame').getBoundingClientRect();
+        const { w, h } = window.__NF.BASELINE;
+        return l.height / Math.min(f.width / (w / h), f.height);
+      });
+    };
+    const banner = await share('3:1');
+    const widescreen = await share('16:9');
+    const classic = await share('4:3');
+    const square = await share('1:1');
+    const story = await share('9:16');
+    const { SCALE_WIDESCREEN, SCALE_CLASSIC, SCALE_SQUARE, SCALE_TALL } = await page.evaluate(() => ({
+      SCALE_WIDESCREEN: window.__NF.SCALE_WIDESCREEN,
+      SCALE_CLASSIC: window.__NF.SCALE_CLASSIC,
+      SCALE_SQUARE: window.__NF.SCALE_SQUARE,
+      SCALE_TALL: window.__NF.SCALE_TALL,
+    }));
+    expect(widescreen / banner).toBeCloseTo(SCALE_WIDESCREEN, 1);
+    expect(classic / banner).toBeCloseTo(SCALE_CLASSIC, 1);
+    expect(square / banner).toBeCloseTo(SCALE_SQUARE, 1);
+    expect(story / banner).toBeCloseTo(SCALE_TALL, 1);
+  });
+});

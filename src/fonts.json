@@ -1,0 +1,38 @@
+[
+  {
+    "key": "300n",
+    "style": "normal",
+    "weight": 300,
+    "file": "300n.woff2"
+  },
+  {
+    "key": "300i",
+    "style": "italic",
+    "weight": 300,
+    "file": "300i.woff2"
+  },
+  {
+    "key": "400n",
+    "style": "normal",
+    "weight": 400,
+    "file": "400n.woff2"
+  },
+  {
+    "key": "400i",
+    "style": "italic",
+    "weight": 400,
+    "file": "400i.woff2"
+  },
+  {
+    "key": "500n",
+    "style": "normal",
+    "weight": 500,
+    "file": "500n.woff2"
+  },
+  {
+    "key": "700n",
+    "style": "normal",
+    "weight": 700,
+    "file": "700n.woff2"
+  }
+]

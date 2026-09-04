@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Newton — Ratio lab</title>
+<style>
+  :root{
+    --gray-50:#F9FAFB; --gray-100:#F2F4F7; --gray-200:#EAECF0; --gray-400:#98A2B3;
+    --gray-500:#667085; --gray-700:#344054; --gray-900:#101828;
+    --brand-600:#4A6FCE; --brand-100:#DCE5F9;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0; background:var(--gray-50); color:var(--gray-900);
+    font:14px/1.45 Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif}
+  header{
+    position:sticky; top:0; z-index:2; display:flex; flex-wrap:wrap; gap:12px 20px;
+    align-items:baseline; justify-content:space-between;
+    padding:16px 22px; background:#fff; border-bottom:1px solid var(--gray-200);
+  }
+  header h1{margin:0; font-size:16px; font-weight:600}
+  header p{margin:0; color:var(--gray-500); max-width:62ch}
+  header a{color:var(--brand-600); text-decoration:none; font-weight:500}
+  header a:hover{text-decoration:underline}
+  .toolbar{display:flex; flex-wrap:wrap; gap:8px; align-items:center}
+  .toolbar button, .toolbar select{
+    font:inherit; border:1px solid var(--gray-200); background:#fff; border-radius:8px;
+    padding:7px 12px; cursor:pointer; color:var(--gray-700);
+  }
+  .toolbar button[aria-pressed=true]{border-color:var(--brand-600); color:var(--brand-600); background:var(--brand-100)}
+  main{padding:20px 22px 40px; display:grid; gap:18px;
+    grid-template-columns:repeat(auto-fill, minmax(340px, 1fr))}
+  figure{
+    margin:0; background:#fff; border:1px solid var(--gray-200); border-radius:12px;
+    overflow:hidden; display:flex; flex-direction:column;
+  }
+  figure.baseline{border-color:var(--gray-900); box-shadow:0 0 0 3px rgba(16,24,40,.10)}
+  .shot{background:#101828; display:grid; place-items:center; padding:14px}
+  .shot > div{width:100%; max-width:100%; background:#000; overflow:hidden;
+    border-radius:4px; box-shadow:0 1px 3px rgba(0,0,0,.35)}
+  iframe{display:block; width:100%; height:100%; border:0; background:#000}
+  figcaption{padding:12px 14px 14px; border-top:1px solid var(--gray-200)}
+  figcaption h2{margin:0 0 6px; font-size:13px; display:flex; gap:8px; align-items:baseline; flex-wrap:wrap}
+  figcaption h2 small{font-weight:400; color:var(--gray-500)}
+  figcaption h2 b{font-size:10px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--gray-700); background:var(--gray-100); padding:2px 7px; border-radius:99px}
+  .knobs{display:grid; gap:8px; margin:8px 0 10px}
+  .knobs label{display:grid; grid-template-columns:52px 1fr 42px; gap:8px; align-items:center;
+    font-size:12px; color:var(--gray-500)}
+  .knobs input[type=range]{width:100%; margin:0}
+  .knobs output{font-variant-numeric:tabular-nums; color:var(--gray-700); text-align:right}
+  .knobs[data-locked=true]{opacity:.45; pointer-events:none}
+  dl{margin:0; display:grid; grid-template-columns:1fr 1fr; gap:6px 12px; font-size:12px}
+  dt{color:var(--gray-400); margin:0}
+  dd{margin:0; font-variant-numeric:tabular-nums; color:var(--gray-700)}
+  .note{grid-column:1/-1; margin:8px 0 0; color:var(--gray-500); font-size:12px}
+  .toast{position:fixed; bottom:16px; right:16px; background:var(--gray-900); color:#fff;
+    padding:8px 12px; border-radius:8px; font-size:12px; opacity:0; pointer-events:none;
+    transition:opacity .15s ease}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Ratio lab</h1>
+    <p>3:1 is <b style="color:var(--gray-900)">locked</b>. Drag scale and columns on each card — no reload. +10% / +20% bumps every unlocked scale. Copy layout dumps a paste-ready <code>FORMAT_LAYOUT</code> for <code>index.html</code>.</p>
+  </div>
+  <div class="toolbar">
+    <button type="button" id="bump10">+10%</button>
+    <button type="button" id="bump20">+20%</button>
+    <button type="button" id="copyLayout">Copy layout</button>
+    <button type="button" id="copyDefault" aria-pressed="true">Default copy</button>
+    <button type="button" id="copyLong" aria-pressed="false">Long copy</button>
+    <button type="button" id="reload">Reload all</button>
+    <a href="/">← Editor</a>
+  </div>
+</header>
+<main id="grid"></main>
+<div class="toast" id="toast" hidden></div>
+<script>
+const RATIOS = [
+  { id:'3:1',  name:'Banner',      w:1920, h:640,  baseline:true, locked:true },
+  { id:'2:1',  name:'Wide',        w:1920, h:960 },
+  { id:'16:9', name:'Widescreen',  w:1920, h:1080 },
+  { id:'4:3',  name:'Classic',     w:1440, h:1080 },
+  { id:'1:1',  name:'Square',      w:1080, h:1080 },
+  { id:'4:5',  name:'Portrait',    w:1080, h:1350 },
+  { id:'9:16', name:'Story',       w:1080, h:1920 },
+];
+
+const COPY = {
+  long: {
+    eyebrow: 'Authorization layer',
+    head: 'Policy, enforced *before* the transaction exists, across every service you run.',
+    body: 'Newton evaluates each request against your rules at the edge, so nothing reaches the ledger unchecked.',
+  },
+};
+
+const LAYOUT_SEED = {
+  '3:1':  { scale:1,     spanCols:7,  locked:true },
+  '2:1':  { scale:1.26,  spanCols:7 },
+  '16:9': { scale:1.26,  spanCols:7 },
+  '4:3':  { scale:1.512, spanCols:9 },
+  '1:1':  { scale:1.56,  spanCols:10 },
+  '4:5':  { scale:1.80,  spanCols:10 },
+  '9:16': { scale:1.80,  spanCols:10 }
+};
+const LAYOUT = {};
+function resetLayout(){
+  Object.keys(LAYOUT_SEED).forEach(id => { LAYOUT[id] = { ...LAYOUT_SEED[id] }; });
+}
+resetLayout();
+
+let copyKey = 'default';
+let storedDefault = null;
+const grid = document.getElementById('grid');
+const toastEl = document.getElementById('toast');
+
+function srcFor(r){
+  const q = new URLSearchParams({ embed:'1', pause:'1', w:String(r.w), h:String(r.h) });
+  return 'index.html?' + q.toString();
+}
+
+function fmtScale(n){ return Number(n).toFixed(3).replace(/0+$/, '').replace(/\.$/, ''); }
+function fmtPct(n){ return n == null || !Number.isFinite(n) ? '—' : n.toFixed(1) + '%'; }
+function roundScale(n){ return +Number(n).toFixed(4); }
+
+function toast(msg){
+  toastEl.hidden = false;
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => toastEl.classList.remove('show'), 1400);
+}
+
+function nf(iframe){
+  try { return iframe.contentWindow && iframe.contentWindow.__NF; } catch (e) { return null; }
+}
+
+function applyCopy(win){
+  const N = win.__NF;
+  const c = copyKey === 'long' ? COPY.long : storedDefault;
+  if (!c || !N) return;
+  N.S.text.eyebrow = c.eyebrow;
+  N.S.text.head = c.head;
+  N.S.text.body = c.body;
+  N.setTextField('tiEyebrow', c.eyebrow);
+  N.setTextField('tiHead', c.head);
+  N.setTextField('tiBody', c.body);
+}
+
+function captureDefault(win){
+  if (storedDefault) return;
+  const T = win.__NF.S.text;
+  storedDefault = { eyebrow: T.eyebrow, head: T.head, body: T.body };
+}
+
+function pushLayout(iframe, id){
+  const N = nf(iframe);
+  const row = LAYOUT[id];
+  if (!N || !row || row.locked) return;
+  N.setFormatLayout(id, { scale: row.scale, spanCols: row.spanCols });
+}
+
+function paintStats(fig, stats, extra){
+  const set = (k, v) => { const el = fig.querySelector(`[data-k="${k}"]`); if (el) el.textContent = v; };
+  if (!stats) return;
+  set('scale', fmtScale(stats.scale));
+  set('cols', String(stats.cols));
+  set('hw', fmtPct(stats.headPctW));
+  set('lw', fmtPct(stats.logoPctW));
+  set('mw', fmtPct(stats.measurePctW));
+  set('logoXY', stats.logo && stats.logo.x != null ? fmtPct(stats.logo.x) + ' / ' + fmtPct(stats.logo.y) : '—');
+  set('textXY', stats.text && stats.text.x != null ? fmtPct(stats.text.x) + ' / ' + fmtPct(stats.text.y) : '—');
+  if (extra && extra.hl) set('hl', extra.hl);
+}
+
+function readStats(iframe, fig){
+  const N = nf(iframe);
+  if (!N || !N.layoutStats) return false;
+  const stats = N.layoutStats();
+  const doc = iframe.contentDocument;
+  const plate = doc && doc.querySelector('#logoLayer .scrim');
+  const head = doc && doc.getElementById('tHead');
+  let hl = '—';
+  if (plate && head){
+    const size = parseFloat(getComputedStyle(head).fontSize) || 0;
+    const h = plate.getBoundingClientRect().height;
+    if (h) hl = (size / h).toFixed(2);
+  }
+  paintStats(fig, stats, { hl });
+  return true;
+}
+
+function refreshCard(iframe, fig, id){
+  requestAnimationFrame(() => {
+    pushLayout(iframe, id);
+    const win = iframe.contentWindow;
+    if (win && win.__NF) applyCopy(win);
+    readStats(iframe, fig);
+  });
+}
+
+function card(r){
+  const fig = document.createElement('figure');
+  if (r.baseline) fig.classList.add('baseline');
+  fig.dataset.id = r.id;
+  const ar = (r.w / r.h).toFixed(4);
+  const row = LAYOUT[r.id];
+  const locked = !!(r.locked || (row && row.locked));
+  fig.innerHTML = `
+    <div class="shot"><div style="aspect-ratio:${ar}"><iframe title="${r.id}" loading="lazy"></iframe></div></div>
+    <figcaption>
+      <h2>${r.id} <small>${r.name} · ${r.w}×${r.h}</small>
+        ${locked ? '<b>locked</b>' : ''}
+      </h2>
+      <div class="knobs" data-locked="${locked}">
+        <label>Scale <input type="range" data-k="scale" min="1" max="2.2" step="0.01" value="${row.scale}" ${locked ? 'disabled' : ''}> <output data-out="scale">${fmtScale(row.scale)}</output></label>
+        <label>Cols <input type="range" data-k="cols" min="1" max="12" step="1" value="${row.spanCols}" ${locked ? 'disabled' : ''}> <output data-out="cols">${row.spanCols}</output></label>
+      </div>
+      <dl>
+        <div><dt>scale</dt><dd data-k="scale">${fmtScale(row.scale)}</dd></div>
+        <div><dt>cols</dt><dd data-k="cols">${row.spanCols}</dd></div>
+        <div><dt>head %W</dt><dd data-k="hw">…</dd></div>
+        <div><dt>logo %W</dt><dd data-k="lw">…</dd></div>
+        <div><dt>measure %W</dt><dd data-k="mw">…</dd></div>
+        <div><dt>head ÷ logo</dt><dd data-k="hl">…</dd></div>
+        <div><dt>logo x% / y%</dt><dd data-k="logoXY">…</dd></div>
+        <div><dt>text x% / y%</dt><dd data-k="textXY">…</dd></div>
+      </dl>
+    </figcaption>`;
+  const iframe = fig.querySelector('iframe');
+  const scaleIn = fig.querySelector('input[data-k="scale"]');
+  const colsIn = fig.querySelector('input[data-k="cols"]');
+  const bindOut = (input, key) => {
+    const out = fig.querySelector(`output[data-out="${key}"]`);
+    input.addEventListener('input', () => {
+      if (key === 'scale'){
+        LAYOUT[r.id].scale = roundScale(input.value);
+        if (out) out.textContent = fmtScale(LAYOUT[r.id].scale);
+      } else {
+        LAYOUT[r.id].spanCols = parseInt(input.value, 10);
+        if (out) out.textContent = String(LAYOUT[r.id].spanCols);
+      }
+      refreshCard(iframe, fig, r.id);
+    });
+  };
+  bindOut(scaleIn, 'scale');
+  bindOut(colsIn, 'cols');
+  iframe.src = srcFor(r);
+  iframe.addEventListener('load', () => onFrame(iframe, fig, r));
+  return fig;
+}
+
+function onFrame(iframe, fig, r){
+  let n = 0;
+  (function poll(){
+    const N = nf(iframe);
+    if (!N){
+      if (++n < 40) setTimeout(poll, 120);
+      return;
+    }
+    captureDefault(iframe.contentWindow);
+    pushLayout(iframe, r.id);
+    applyCopy(iframe.contentWindow);
+    requestAnimationFrame(() => readStats(iframe, fig));
+  })();
+}
+
+function eachCard(fn){
+  grid.querySelectorAll('figure').forEach(fig => {
+    const id = fig.dataset.id;
+    const iframe = fig.querySelector('iframe');
+    fn(fig, iframe, id);
+  });
+}
+
+function syncKnobs(fig, id){
+  const row = LAYOUT[id];
+  if (!row) return;
+  const scaleIn = fig.querySelector('input[data-k="scale"]');
+  const colsIn = fig.querySelector('input[data-k="cols"]');
+  const scaleOut = fig.querySelector('output[data-out="scale"]');
+  const colsOut = fig.querySelector('output[data-out="cols"]');
+  if (scaleIn){ scaleIn.value = row.scale; if (scaleOut) scaleOut.textContent = fmtScale(row.scale); }
+  if (colsIn){ colsIn.value = row.spanCols; if (colsOut) colsOut.textContent = String(row.spanCols); }
+}
+
+function bumpAll(pct){
+  const m = 1 + pct / 100;
+  Object.keys(LAYOUT).forEach(id => {
+    if (LAYOUT[id].locked) return;
+    LAYOUT[id].scale = roundScale(LAYOUT[id].scale * m);
+  });
+  eachCard((fig, iframe, id) => {
+    syncKnobs(fig, id);
+    refreshCard(iframe, fig, id);
+  });
+}
+
+function layoutSnippet(){
+  const lines = Object.keys(LAYOUT).map(id => {
+    const row = LAYOUT[id];
+    const locked = row.locked ? ', locked:true' : '';
+    return `  '${id}': { scale:${roundScale(row.scale)}, spanCols:${row.spanCols}${locked} }`;
+  });
+  return 'const FORMAT_LAYOUT = {\n' + lines.join(',\n') + '\n};';
+}
+
+function render(){
+  storedDefault = null;
+  resetLayout();
+  grid.innerHTML = '';
+  RATIOS.forEach(r => grid.appendChild(card(r)));
+}
+
+document.getElementById('reload').onclick = render;
+document.getElementById('bump10').onclick = () => bumpAll(10);
+document.getElementById('bump20').onclick = () => bumpAll(20);
+document.getElementById('copyLayout').onclick = async () => {
+  const text = layoutSnippet();
+  try {
+    await navigator.clipboard.writeText(text);
+    toast('FORMAT_LAYOUT copied');
+  } catch (e) {
+    toast('Copy failed — see console');
+    console.log(text);
+  }
+};
+document.getElementById('copyDefault').onclick = () => {
+  copyKey = 'default';
+  document.getElementById('copyDefault').setAttribute('aria-pressed','true');
+  document.getElementById('copyLong').setAttribute('aria-pressed','false');
+  eachCard((fig, iframe, id) => refreshCard(iframe, fig, id));
+};
+document.getElementById('copyLong').onclick = () => {
+  copyKey = 'long';
+  document.getElementById('copyDefault').setAttribute('aria-pressed','false');
+  document.getElementById('copyLong').setAttribute('aria-pressed','true');
+  eachCard((fig, iframe, id) => refreshCard(iframe, fig, id));
+};
+
+render();
+</script>
+</body>
+</html>

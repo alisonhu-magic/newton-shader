@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Newton Shader — Designer Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  /* ---------- Untitled UI tokens ---------- */
+  :root{
+    /* gray */
+    --gray-25:#FCFCFD; --gray-50:#F9FAFB; --gray-100:#F2F4F7; --gray-200:#EAECF0;
+    --gray-300:#D0D5DD; --gray-400:#98A2B3; --gray-500:#667085; --gray-600:#475467;
+    --gray-700:#344054; --gray-800:#182230; --gray-900:#101828;
+    /* brand — Untitled UI primary remapped to Newton Blue-Mid */
+    --brand-25:#F7F9FE; --brand-50:#EEF3FC; --brand-100:#DCE5F9; --brand-200:#C1D2F4;
+    --brand-300:#9CB6ED; --brand-500:#5B83E4; --brand-600:#4A6FCE; --brand-700:#2F4A86;
+
+    --radius-sm:6px; --radius-md:8px; --radius-lg:12px; --radius-xl:16px;
+    --shadow-xs:0 1px 2px rgba(16,24,40,.05);
+    --shadow-sm:0 1px 3px rgba(16,24,40,.1), 0 1px 2px rgba(16,24,40,.06);
+    --shadow-lg:0 12px 16px -4px rgba(16,24,40,.08), 0 4px 6px -2px rgba(16,24,40,.03);
+    --ring:0 0 0 4px rgba(91,131,228,.24);
+
+    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px;
+    --sans:"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:#fff; color:var(--gray-900);
+    font-family:var(--sans); font-size:14px; line-height:1.43;
+    -webkit-font-smoothing:antialiased;
+    font-feature-settings:"tnum" 1, "cv11" 1;
+  }
+  /* Ratio lab embed: stage only, fills the iframe */
+  body.embed .top,
+  body.embed .rail,
+  body.embed .stagebar,
+  body.embed .stagefoot,
+  body.embed .toast{display:none!important}
+  body.embed .app{display:block; height:100vh; height:100dvh}
+  body.embed .stage{height:100%; border:none; border-radius:0; background:transparent}
+  body.embed .canvas-wrap{height:100%; padding:0; overflow:hidden}
+  body.embed .frame{max-width:none!important; width:100%!important}
+  .app{display:grid; grid-template-columns:1fr 380px; height:100vh; min-height:0}
+  @media (max-width:960px){ .app{grid-template-columns:1fr; height:auto} }
+
+  /* ---------- stage ---------- */
+  /* min-height:0 lets the stage shrink to the 100vh grid row instead of being
+     pushed taller by a portrait canvas, which would scroll the footer away. */
+  .stage{display:flex; flex-direction:column; min-width:0; min-height:0; background:var(--gray-50)}
+  .bar{
+    display:flex; align-items:center; gap:var(--s4);
+    padding:var(--s4) var(--s5); background:#fff;
+    border-bottom:1px solid var(--gray-200); flex-wrap:wrap;
+  }
+  .mark{display:flex; align-items:center; gap:var(--s3)}
+  .hex{
+    width:36px; height:36px; flex:none; background:var(--brand-500);
+    border-radius:var(--radius-md);
+    -webkit-mask:linear-gradient(#000,#000); mask:linear-gradient(#000,#000);
+    position:relative;
+  }
+  .hex::after{
+    content:""; position:absolute; inset:9px;
+    background:#fff; clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);
+  }
+  .title{font-size:16px; font-weight:600; color:var(--gray-900); letter-spacing:-.01em}
+  .title span{display:block; font-size:14px; font-weight:400; color:var(--gray-600)}
+  .chips{display:flex; gap:var(--s2); margin-left:auto; flex-wrap:wrap}
+
+  /* Grid centring (not flex justify/align) so that at 1:1, where the frame can
+     be wider or taller than the stage, the overflow stays reachable by scroll
+     instead of spilling equally past both edges. */
+  .canvas-wrap{
+    flex:1; display:grid; place-items:center;
+    padding:var(--s7) var(--s5); min-height:0; overflow:hidden;
+  }
+  .canvas-wrap.zoomed{overflow:auto}
+  /* 1:1 sizing is set in px by fitFrame() and must outrank the fit-mode cap */
+  .canvas-wrap.zoomed .frame{max-width:none}
+  /* Width is set by fitFrame() so the aspect-ratio-derived height always fits
+     the stage; the CSS values are the pre-first-frame fallback. */
+  .frame{
+    --ratio-scale:1;
+    position:relative; width:100%; max-width:1100px;
+    border-radius:var(--radius-lg); overflow:hidden;
+    border:1px solid var(--gray-200); box-shadow:var(--shadow-lg); background:#fff;
+  }
+  #gl{display:block; width:100%; height:auto; opacity:0; transition:opacity .4s ease-in-out}
+  #gl.ready{opacity:1}
+  .mask{position:absolute; inset:0; pointer-events:none}
+  /* floating canvas toolbar (Reseed / Pause) — appears on hover */
+  .stagebar{position:absolute; top:10px; right:10px; display:flex; gap:6px; z-index:6;
+    opacity:0; transform:translateY(-4px); pointer-events:none;
+    transition:opacity .15s ease, transform .15s ease}
+  .canvas-wrap:hover .stagebar, .stagebar:focus-within{opacity:1; transform:none; pointer-events:auto}
+  /* touch devices never fire hover, so the pause and reseed buttons would be
+     invisible and unusable there — keep them out permanently instead */
+  @media (hover:none){
+    .stagebar{opacity:1; transform:none; pointer-events:auto}
+  }
+  .tbtn{all:unset; box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center;
+    width:32px; height:32px; border-radius:var(--radius-md); cursor:pointer; color:#fff;
+    background:rgba(16,24,40,.55); border:1px solid rgba(255,255,255,.18);
+    -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); transition:background .12s ease}
+  .tbtn:hover{background:rgba(16,24,40,.82)}
+  .tbtn:focus-visible{box-shadow:var(--ring)}
+  .tbtn svg{width:16px; height:16px; display:block}
+  .tbtn .ic-play{display:none}
+  .tbtn[aria-pressed=true] .ic-play{display:block}
+  .tbtn[aria-pressed=true] .ic-pause{display:none}
+
+  .stagefoot{
+    display:flex; gap:var(--s5); align-items:center; flex-wrap:wrap;
+    padding:var(--s3) var(--s5); background:#fff;
+    border-top:1px solid var(--gray-200); font-size:14px; color:var(--gray-600);
+  }
+  .stagefoot > div{display:flex; align-items:center; gap:var(--s2)}
+  .stagefoot b{
+    font-weight:500; color:var(--gray-700); background:var(--gray-50);
+    border:1px solid var(--gray-200); border-radius:var(--radius-sm);
+    padding:2px 8px; font-size:12px;
+  }
+  .stagefoot > div:last-child{margin-left:auto; color:var(--gray-500); font-size:12px}
+  .stagefoot > div:last-child b{background:none; border:0; padding:0}
+
+  /* ---------- rail ---------- */
+  .rail{overflow-y:auto; min-height:0; background:#fff; border-left:1px solid var(--gray-200)}
+  .group{border-bottom:1px solid var(--gray-200); padding:var(--s5)}
+  .group > h2{
+    margin:0 0 var(--s4); font-size:14px; font-weight:600; color:var(--gray-700);
+  }
+  /* bucket label between clusters of sections */
+  .railgroup{
+    padding:var(--s5) var(--s5) var(--s2); font-size:11px; font-weight:700;
+    letter-spacing:.09em; text-transform:uppercase; color:var(--gray-400);
+    background:#fff; border-bottom:1px solid var(--gray-200);
+  }
+  /* collapsible section headers (accordion) */
+  .group > h2{cursor:pointer; user-select:none}
+  .group.collapsed > h2{margin-bottom:0}
+  .group.collapsed > *:not(h2){display:none}
+  .group > h2::after{
+    content:''; margin-left:auto; flex:none; width:8px; height:8px;
+    border-right:1.6px solid var(--gray-400); border-bottom:1.6px solid var(--gray-400);
+    transform:rotate(45deg); transition:transform .18s ease;
+  }
+  .group.collapsed > h2::after{transform:rotate(-45deg)}
+  /* Marks header: lock stays flush-right and tight against the collapse arrow
+     (only the lock keeps margin-left:auto; the chevron sits right beside it) */
+  #marksGroup > h2::after{margin-left:-2px}
+  .row{display:flex; align-items:center; justify-content:space-between; gap:var(--s3); margin-bottom:var(--s2)}
+  label.lbl{font-size:14px; font-weight:500; color:var(--gray-700)}
+  .val{font-size:14px; color:var(--gray-600); min-width:56px; text-align:right; font-variant-numeric:tabular-nums}
+  /* editable numeric value (Figma/Affinity style click-to-type) */
+  input.val{all:unset; box-sizing:border-box; width:58px; min-width:58px; text-align:right; cursor:text;
+    font-size:14px; color:var(--gray-700); font-variant-numeric:tabular-nums;
+    padding:2px 6px; border:1px solid transparent; border-radius:var(--radius-sm); transition:border-color .12s ease}
+  input.val:hover{border-color:var(--gray-200); background:var(--gray-25)}
+  input.val:focus{border-color:var(--brand-300); box-shadow:var(--ring); background:#fff; color:var(--gray-900)}
+  input.val:disabled{color:var(--gray-400); cursor:not-allowed}
+  input.val:disabled:hover{border-color:transparent; background:none}
+  /* toggle switch (on/off boolean controls) */
+  .switch{all:unset; box-sizing:border-box; display:flex; align-items:center; justify-content:space-between;
+    gap:var(--s3); width:100%; cursor:pointer; padding:8px 12px; background:#fff;
+    border:1px solid var(--gray-200); border-radius:var(--radius-md);
+    transition:border-color .12s ease, background .12s ease}
+  .switch:hover{border-color:var(--gray-300)}
+  .switch:focus-visible{box-shadow:var(--ring)}
+  .switch .switch-label{font-size:14px; font-weight:500; color:var(--gray-700)}
+  .switch .switch-track{position:relative; flex:none; width:36px; height:20px; border-radius:999px;
+    background:var(--gray-300); transition:background .16s ease}
+  .switch .switch-knob{position:absolute; top:2px; left:2px; width:16px; height:16px; border-radius:999px;
+    background:#fff; box-shadow:var(--shadow-sm); transition:transform .16s ease}
+  .switch[aria-checked=true]{border-color:var(--brand-300)}
+  .switch[aria-checked=true] .switch-track{background:var(--brand-500)}
+  .switch[aria-checked=true] .switch-knob{transform:translateX(16px)}
+  .switch:disabled{opacity:.55; cursor:not-allowed}
+
+  /* slider */
+  input[type=range]{
+    -webkit-appearance:none; appearance:none; width:100%; height:8px;
+    background:var(--gray-200); border-radius:999px; margin:var(--s2) 0 var(--s4); outline:none;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none; width:22px; height:22px; border-radius:999px;
+    background:#fff; border:1.5px solid var(--brand-500);
+    box-shadow:var(--shadow-sm); cursor:pointer;
+  }
+  input[type=range]::-moz-range-thumb{
+    width:22px; height:22px; border-radius:999px; background:#fff;
+    border:1.5px solid var(--brand-500); box-shadow:var(--shadow-sm); cursor:pointer;
+  }
+  input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:var(--ring)}
+  input[type=range]:focus-visible::-moz-range-thumb{box-shadow:var(--ring)}
+  .slider{margin-bottom:0}
+  .slider .row{margin-bottom:0}
+
+  /* locked slider group */
+  input[type=range]:disabled{cursor:not-allowed}
+  input[type=range]:disabled::-webkit-slider-thumb{border-color:var(--gray-300); background:var(--gray-100); cursor:not-allowed}
+  input[type=range]:disabled::-moz-range-thumb{border-color:var(--gray-300); background:var(--gray-100); cursor:not-allowed}
+  .group.locked input[type=range]{opacity:.6}
+  .group.locked label.lbl, .group.locked .val{color:var(--gray-400)}
+  #fadeGroup.locked input[type=range]{opacity:.6}
+  #fadeGroup.locked label.lbl, #fadeGroup.locked .val{color:var(--gray-400)}
+  #fadeGroup.locked .switch{opacity:.6; pointer-events:none}
+
+  /* lock toggle in section header */
+  .lockBtn{
+    margin-left:auto; flex:none; display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:26px; padding:0; border:1px solid var(--gray-200);
+    background:var(--gray-50); color:var(--gray-500); border-radius:var(--radius-sm);
+    cursor:pointer; position:relative; transition:background .12s ease, color .12s ease, border-color .12s ease;
+  }
+  .lockBtn:hover{background:var(--gray-100); color:var(--gray-700)}
+  .group > h2 .lockBtn svg{width:14px; height:14px; color:inherit}
+  .lockBtn .ic-open{display:none}
+  .lockBtn.unlocked{color:var(--brand-600); border-color:var(--brand-200); background:var(--brand-25)}
+  .lockBtn.unlocked .ic-closed{display:none}
+  .lockBtn.unlocked .ic-open{display:block}
+  .lockBtn[data-tip]::after{
+    content:attr(data-tip); position:absolute; top:calc(100% + 8px); right:0;
+    width:224px; padding:8px 10px; text-align:left; white-space:normal;
+    background:var(--gray-900); color:#fff; font-size:12px; font-weight:400; line-height:1.4;
+    border-radius:var(--radius-md); box-shadow:var(--shadow-lg);
+    opacity:0; visibility:hidden; transform:translateY(-2px);
+    transition:opacity .12s ease, transform .12s ease, visibility .12s ease;
+    pointer-events:none; z-index:30;
+  }
+  .lockBtn:hover::after, .lockBtn:focus-visible::after{opacity:1; visibility:visible; transform:translateY(0)}
+
+  /* toggle chips (button group) */
+  /* field type visual picker (Canva-style thumbnails) */
+  .fieldpick{display:grid; grid-template-columns:repeat(2,1fr); gap:var(--s2)}
+  .fieldpick button{all:unset; box-sizing:border-box; cursor:pointer; overflow:hidden;
+    border:1px solid var(--gray-200); border-radius:var(--radius-md); background:#fff;
+    transition:border-color .12s ease, box-shadow .12s ease}
+  .fieldpick button:hover{border-color:var(--gray-300)}
+  .fieldpick button:focus-visible{box-shadow:var(--ring)}
+  .fieldpick button[aria-pressed=true]{border-color:var(--brand-500); box-shadow:inset 0 0 0 1px var(--brand-500)}
+  .fieldpick .thumb{display:block; width:100%; height:34px; background:#203C7F}
+  .fieldpick .cap{display:block; padding:4px 6px; font-size:11px; font-weight:600;
+    color:var(--gray-700); text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .fieldpick button[aria-pressed=true] .cap{color:var(--brand-700)}
+  .seg{display:grid; grid-auto-flow:column; gap:var(--s2)}
+  .seg.wrap{grid-auto-flow:row; grid-template-columns:repeat(2,1fr)}
+  .seg.wrap3{grid-auto-flow:row; grid-template-columns:repeat(3,1fr)}
+  .seg button{
+    all:unset; text-align:center; box-sizing:border-box; padding:8px 10px; cursor:pointer;
+    background:#fff; border:1px solid var(--gray-300); border-radius:var(--radius-md);
+    box-shadow:var(--shadow-xs); font-size:13px; font-weight:500; color:var(--gray-700);
+  }
+  .seg button:hover{background:var(--gray-50)}
+  .seg button[aria-pressed=true]{
+    background:var(--brand-50); border-color:var(--brand-300); color:var(--brand-700); font-weight:600;
+  }
+  .seg button:focus-visible{box-shadow:var(--ring)}
+
+  /* buttons */
+  .btn{
+    all:unset; display:block; text-align:center; box-sizing:border-box;
+    padding:10px 14px; cursor:pointer; background:#fff;
+    border:1px solid var(--gray-300); border-radius:var(--radius-md);
+    box-shadow:var(--shadow-xs); font-size:14px; font-weight:600; color:var(--gray-700);
+  }
+  .btn:hover{background:var(--gray-50)}
+  .btn:focus-visible{box-shadow:var(--ring)}
+  .btn[aria-pressed=true]{background:var(--brand-50); border-color:var(--brand-300); color:var(--brand-700)}
+  .btn.solid{background:var(--brand-500); border-color:var(--brand-500); color:#fff}
+  .btn.solid:hover{background:var(--brand-600); border-color:var(--brand-600)}
+  .btn.chip{padding:7px 12px; font-size:13px; display:inline-block}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:var(--s2)}
+  .stack{display:grid; gap:var(--s2)}
+
+  /* color channel selects */
+  .chan{display:grid; grid-template-columns:64px 1fr 24px; align-items:center; gap:var(--s3); margin-bottom:var(--s3)}
+  .chan span{font-size:14px; font-weight:500; color:var(--gray-700)}
+  .chan i{width:24px; height:24px; border-radius:999px; border:1px solid var(--gray-200); box-shadow:var(--shadow-xs)}
+  .chan select{
+    all:unset; width:100%; box-sizing:border-box; padding:9px 12px; cursor:pointer;
+    background:#fff; border:1px solid var(--gray-300); border-radius:var(--radius-md);
+    box-shadow:var(--shadow-xs); font-size:14px; color:var(--gray-900);
+  }
+  .chan select:focus-visible{border-color:var(--brand-300); box-shadow:var(--ring)}
+
+  .field{display:grid; gap:4px}
+  .sizeRow{display:grid; grid-template-columns:1fr auto 1fr; align-items:end; gap:var(--s2); margin:var(--s3) 0}
+  .sizeRow .x{color:var(--gray-400); font-size:13px; padding-bottom:9px}
+  .brandsoon{font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    color:var(--gray-400); margin-left:6px}
+  .seg button:disabled{opacity:.45; cursor:not-allowed}
+  .top{
+    display:flex; align-items:center; gap:var(--s4);
+    padding:var(--s3) var(--s5); background:#fff;
+    border-bottom:1px solid var(--gray-200); flex-wrap:wrap;
+  }
+  .top .title span{display:block; font-size:12px; font-weight:400; color:var(--gray-500)}
+  .fmtsel{all:unset; box-sizing:border-box; display:block; width:100%; cursor:pointer;
+    padding:9px 34px 9px 12px; border:1px solid var(--gray-300); border-radius:var(--radius-md);
+    box-shadow:var(--shadow-xs); font-size:14px; font-weight:500; color:var(--gray-700); background:#fff;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%23667085' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5'/%3E%3C/svg%3E");
+    background-repeat:no-repeat; background-position:right 12px center}
+  .fmtsel:focus-visible{border-color:var(--brand-300); box-shadow:var(--ring)}
+  .field label{font-size:12px; font-weight:500; color:var(--gray-600)}
+  input[type=number]{
+    all:unset; box-sizing:border-box; width:100%; padding:9px 12px; background:#fff;
+    border:1px solid var(--gray-300); border-radius:var(--radius-md); box-shadow:var(--shadow-xs);
+    font-size:14px; color:var(--gray-900); font-variant-numeric:tabular-nums;
+  }
+  input[type=number]:focus-visible{border-color:var(--brand-300); box-shadow:var(--ring)}
+  .drop{border:1.5px dashed var(--gray-300); border-radius:var(--radius-lg); padding:var(--s4);
+    text-align:center; cursor:pointer; background:var(--gray-25); margin-bottom:var(--s3); display:block}
+  .drop:hover{border-color:var(--brand-300); background:var(--brand-25)}
+  .drop.on{border-color:var(--brand-500); background:var(--brand-50)}
+  .drop b{display:block; font-size:14px; font-weight:600; color:var(--brand-700)}
+  .drop small{display:block; font-size:12px; color:var(--gray-500); margin-top:2px}
+  #file{display:none}
+  .palette{display:grid; gap:var(--s2)}
+  .prow{display:grid; grid-template-columns:auto 1fr auto auto; align-items:center; gap:var(--s3)}
+  .prow .tag{font-size:12px; font-weight:600; color:var(--gray-500); width:52px}
+  .prow input[type=color]{-webkit-appearance:none; appearance:none; width:36px; height:28px; padding:0;
+    border:1px solid var(--gray-300); border-radius:var(--radius-md); background:none; cursor:pointer}
+  .prow input[type=color]::-webkit-color-swatch-wrapper{padding:2px}
+  .prow input[type=color]::-webkit-color-swatch{border:0; border-radius:4px}
+  .prow .hexval{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:12px; color:var(--gray-600); text-transform:uppercase}
+  .prow .del{all:unset; cursor:pointer; color:var(--gray-400); font-size:16px; line-height:1; padding:4px 6px; border-radius:var(--radius-sm)}
+  .prow .del:hover{color:var(--gray-700); background:var(--gray-100)}
+  .prow .del:disabled{opacity:.25; cursor:not-allowed}
+  /* fixed brand-palette swatches */
+  .swatches{display:grid; gap:var(--s2)}
+  .swatch{box-sizing:border-box; display:flex; align-items:center; gap:var(--s2);
+    padding:8px 10px; border:1px solid var(--gray-200); border-radius:var(--radius-md);
+    background:#fff; transition:border-color .12s ease, background .12s ease, box-shadow .12s ease}
+  .swatch:hover{border-color:var(--gray-300)}
+  .swatch.on{border-color:var(--brand-500); background:var(--brand-25)}
+  .sw-main{all:unset; box-sizing:border-box; display:flex; align-items:center; gap:var(--s3);
+    flex:1 1 auto; min-width:0; cursor:pointer; border-radius:var(--radius-sm)}
+  .sw-main:focus-visible{box-shadow:var(--ring)}
+  .swatch .dot{width:22px; height:22px; flex:none; border-radius:999px; border:1px solid rgba(16,24,40,.12)}
+  .swatch .sw-meta{display:flex; flex-direction:column; line-height:1.2; min-width:0}
+  .swatch .sw-name{font-size:13px; font-weight:600; color:var(--gray-800)}
+  .swatch .sw-hex{font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:11px; color:var(--gray-500); text-transform:uppercase}
+  /* ground radio — always exactly one selected across active swatches */
+  .sw-ground{all:unset; box-sizing:border-box; display:inline-flex; align-items:center; gap:6px; flex:none;
+    cursor:pointer; font-size:11px; font-weight:600; letter-spacing:.02em; text-transform:uppercase;
+    color:var(--gray-400); padding:3px 8px 3px 6px; border-radius:999px;
+    transition:color .12s ease, background .12s ease}
+  .sw-ground:hover{color:var(--gray-700); background:var(--gray-50)}
+  .sw-ground:focus-visible{box-shadow:var(--ring)}
+  .sw-ground .radio{width:13px; height:13px; box-sizing:border-box; flex:none; border-radius:999px;
+    border:1.5px solid var(--gray-300); transition:border-color .12s ease, background .12s ease, box-shadow .12s ease}
+  .sw-ground[aria-checked="true"]{color:var(--brand-700); background:var(--brand-100)}
+  .sw-ground[aria-checked="true"] .radio{border-color:var(--brand-500); background:var(--brand-500); box-shadow:inset 0 0 0 2px #fff}
+  /* AA contrast badge (mark vs ground) */
+  .aa{display:inline-flex; align-items:center; gap:5px; margin-left:8px; padding:1px 7px; border-radius:999px;
+    font-size:10px; font-weight:700; letter-spacing:.02em; font-variant-numeric:tabular-nums}
+  .aa .aa-dot{width:6px; height:6px; border-radius:999px; flex:none}
+  .aa.pass{color:#067647; background:#ECFDF3} .aa.pass .aa-dot{background:#17B26A}
+  .aa.warn{color:#B54708; background:#FFFAEB} .aa.warn .aa-dot{background:#F79009}
+  .aa.fail{color:#B42318; background:#FEF3F2} .aa.fail .aa-dot{background:#F04438}
+  .palroles .slider{margin-top:var(--s2)}
+  .palroles label.lbl{display:flex; align-items:center; gap:8px}
+  .palroles .dot.sm{width:12px; height:12px; flex:none; border-radius:999px; display:inline-block; border:1px solid rgba(16,24,40,.12)}
+  /* ---- text overlay (uses container-query units so preview == export) ---- */
+  .frame{container-type:size}
+  .txt{position:absolute; inset:0; display:flex; pointer-events:none;
+       font-family:'Suisse BP Intl', Inter, sans-serif; font-kerning:normal}
+  .txt .inner{display:flex; flex-direction:column; width:100%}
+  .txt p, .txt h1{margin:0}
+  .t-eyebrow{font-weight:500; text-transform:uppercase}
+  .t-head{font-weight:300}
+  .t-body{font-weight:400}
+  .txt em{font-style:italic}
+
+  /* ---- grid guide + logo ---- */
+  .gridov{position:absolute; inset:0; pointer-events:none; display:none;
+          padding:var(--m); box-sizing:border-box}
+  .gridov.on{display:block}
+  .gridov .ginner{display:flex; height:100%; gap:var(--g);
+          outline:1px solid rgba(240,68,56,.9); outline-offset:0}
+  .gridov .ginner i{flex:1; background:rgba(240,68,56,.30); outline:1px solid rgba(240,68,56,.85)}
+  .logo{position:absolute; inset:0; pointer-events:none; padding:var(--m);
+        box-sizing:border-box; display:none}
+  .logo.on{display:flex}
+  .logo svg{display:block; height:100%; width:auto}
+  .logo .slot{display:block}
+
+  /* ---- logo scrim ---- */
+  .logo .scrim{display:flex; align-items:center; justify-content:center; box-sizing:content-box}
+
+  /* ---- setups ---- */
+  .saverow{display:grid; grid-template-columns:1fr auto; gap:var(--s2)}
+  .saverow input{
+    all:unset; box-sizing:border-box; width:100%; padding:9px 12px; background:#fff;
+    border:1px solid var(--gray-300); border-radius:var(--radius-md); box-shadow:var(--shadow-xs);
+    font-size:14px; color:var(--gray-900);
+  }
+  .saverow input:focus-visible{border-color:var(--brand-300); box-shadow:var(--ring)}
+  .setups{display:grid; gap:var(--s2); margin-top:var(--s3)}
+  .setups:empty{display:none}
+  .srow{display:grid; grid-template-columns:1fr auto; align-items:center; gap:var(--s2);
+        border:1px solid var(--gray-200); border-radius:var(--radius-md); background:var(--gray-25)}
+  .srow button.load{
+    all:unset; cursor:pointer; padding:9px 12px; font-size:13px; font-weight:600;
+    color:var(--gray-700); border-radius:var(--radius-md);
+  }
+  .srow button.load:hover{color:var(--brand-700)}
+  .srow button.load:focus-visible{box-shadow:var(--ring)}
+  .srow .rm{all:unset; cursor:pointer; color:var(--gray-400); font-size:14px; padding:6px 10px}
+  .srow .rm:hover{color:var(--gray-700)}
+  #setupFile{display:none}
+
+  /* ---- section icons ---- */
+  .group > h2{display:flex; align-items:center; gap:8px}
+  /* carries the collapse button semantics so the Marks lock button is never
+     nested inside another button (see the accordion wiring) */
+  .group > h2 .ghead{display:flex; align-items:center; gap:8px; min-width:0}
+  .group > h2 .ghead:focus-visible{outline:2px solid var(--brand-500); outline-offset:3px; border-radius:var(--radius-sm)}
+  .group > h2 svg{flex:none; width:16px; height:16px; color:var(--gray-400)}
+  .hgrp{display:flex; gap:6px}
+  select.sz.clr{min-width:58px}
+
+  /* ---- text controls ---- */
+  .tfield{display:grid; gap:6px; margin-bottom:var(--s3)}
+  .tfield .thead{display:flex; align-items:center; justify-content:space-between; gap:var(--s2)}
+  .tfield label{font-size:14px; font-weight:500; color:var(--gray-700)}
+  .tfield .tedit{
+    all:unset; box-sizing:border-box; display:block; width:100%; min-height:38px;
+    padding:9px 12px; background:#fff; border:1px solid var(--gray-300);
+    border-radius:var(--radius-md); box-shadow:var(--shadow-xs);
+    font-family:'Suisse BP Intl', Inter, sans-serif; font-size:14px; color:var(--gray-900);
+    line-height:1.4; white-space:pre-wrap; word-break:break-word; cursor:text;
+  }
+  .tfield .tedit.multi{min-height:72px}
+  .tfield .tedit:focus-visible{border-color:var(--brand-300); box-shadow:var(--ring)}
+  .tfield .tedit:empty:before{
+    content:attr(data-placeholder); color:var(--gray-400); pointer-events:none;
+  }
+  .tfield .tedit em, .tfield .tedit i{font-style:italic}
+  .fmt{
+    all:unset; box-sizing:border-box; display:inline-flex; align-items:center; justify-content:center;
+    width:28px; height:28px; cursor:pointer; background:#fff;
+    border:1px solid var(--gray-300); border-radius:var(--radius-md); box-shadow:var(--shadow-xs);
+    font-family:Georgia, 'Times New Roman', serif; font-size:14px; font-style:italic; font-weight:700;
+    color:var(--gray-700); line-height:1;
+  }
+  .fmt:hover{background:var(--gray-50)}
+  .fmt:focus-visible{border-color:var(--brand-300); box-shadow:var(--ring)}
+  .fmt[aria-pressed=true]{color:var(--brand-700); border-color:var(--brand-300); background:var(--brand-50)}
+  select.sz{
+    all:unset; box-sizing:border-box; padding:5px 9px; cursor:pointer; background:#fff;
+    border:1px solid var(--gray-300); border-radius:var(--radius-md); box-shadow:var(--shadow-xs);
+    font-size:12px; font-weight:600; color:var(--gray-700); text-align:center;
+  }
+  select.sz:focus-visible{border-color:var(--brand-300); box-shadow:var(--ring)}
+  .note{font-size:12px; color:var(--gray-500); line-height:1.45; margin:0; letter-spacing:.002em}
+  .note b{font-weight:600; color:var(--gray-600)}
+  .note code{font-size:11px; padding:0 4px}
+  code{
+    font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:12px;
+    background:var(--gray-50); border:1px solid var(--gray-200);
+    border-radius:var(--radius-sm); padding:1px 5px; color:var(--gray-700);
+  }
+
+  .toast{
+    position:fixed; bottom:var(--s5); left:50%; transform:translate(-50%,16px);
+    background:var(--gray-900); color:#fff; padding:10px 16px;
+    border-radius:var(--radius-md); box-shadow:var(--shadow-lg);
+    font-size:14px; font-weight:500;
+    opacity:0; transition:all .22s ease; pointer-events:none; z-index:20;
+  }
+  .toast.show{opacity:1; transform:translate(-50%,0)}
+  @media (prefers-reduced-motion:reduce){ *{transition:none !important} }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ========== STAGE ========== -->
+  <main class="stage">
+    <header class="top">
+      <div class="mark">
+        <div class="hex" aria-hidden="true"></div>
+        <div class="title">Newton Shader<span id="brandSub">Designer studio · Newton Labs</span></div>
+      </div>
+      <div class="chips">
+        <div class="seg" id="brandSel" role="group" aria-label="Brand">
+          <button type="button" data-v="labs" aria-pressed="true">Labs</button>
+          <button type="button" data-v="foundation" disabled title="Foundation branding is reserved — palette and logos will land here later">Foundation<span class="brandsoon">soon</span></button>
+        </div>
+      </div>
+    </header>
+    <div class="canvas-wrap">
+      <div class="frame" id="frame">
+        <canvas id="gl" role="img" aria-label="Generated Newton field pattern preview"></canvas>
+        <div class="mask" id="mask"></div>
+        <div class="logo" id="logoLayer"></div>
+        <div class="gridov" id="gridOv"><div class="ginner" id="gCols"></div></div>
+        <div class="txt" id="txt">
+          <div class="inner" id="txtInner">
+            <p class="t-eyebrow" id="tEyebrow"></p>
+            <h1 class="t-head" id="tHead"></h1>
+            <p class="t-body" id="tBody"></p>
+          </div>
+        </div>
+        <div class="stagebar">
+          <button class="tbtn" id="pause" type="button" aria-pressed="false" title="Pause / play" aria-label="Pause or play the animation">
+            <svg class="ic-pause" viewBox="0 0 16 16" fill="currentColor"><rect x="4" y="3" width="3" height="10" rx="1"/><rect x="9" y="3" width="3" height="10" rx="1"/></svg>
+            <svg class="ic-play" viewBox="0 0 16 16" fill="currentColor"><path d="M5 3.5v9l7-4.5-7-4.5Z"/></svg>
+          </button>
+          <button class="tbtn" id="reseed" type="button" title="New seed" aria-label="Reseed the pattern">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13 8a5 5 0 1 1-1.5-3.5"/><path d="M13 3v2.5h-2.5"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <footer class="stagefoot">
+      <div>Export <b id="exportSize">1920 × 640</b></div>
+      <div>Cells <b id="cellCount">—</b></div>
+      <div>Zoom <b id="zoomOut">—</b></div>
+      <div>Seed <b id="seedOut">—</b></div>
+    </footer>
+  </main>
+
+  <!-- ========== RAIL ========== -->
+  <aside class="rail">
+    <!-- ===== CANVAS ===== -->
+    <section class="group">
+      <h2>Canvas</h2>
+      <label class="lbl" for="format" style="display:block; margin-bottom:var(--s2)">Format</label>
+      <select class="fmtsel" id="format"></select>
+      <div class="sizeRow">
+        <div class="field"><label for="cw">Width</label><input id="cw" type="number" min="16" max="8192" step="1" value="1920"></div>
+        <div class="x">×</div>
+        <div class="field"><label for="ch">Height</label><input id="ch" type="number" min="16" max="8192" step="1" value="640"></div>
+      </div>
+      <p class="note">Presets fill width and height. Type any size up to 8192px per side (33 megapixels). What you set here is the export size.</p>
+      <div style="height:var(--s3)"></div>
+      <label class="lbl" style="display:block; margin-bottom:var(--s2)">Preview</label>
+      <div class="seg" id="zoomSeg" role="group" aria-label="Preview zoom">
+        <button type="button" data-v="fit" aria-pressed="true">Fit</button>
+        <button type="button" data-v="1" aria-pressed="false">100%</button>
+      </div>
+      <p class="note" style="margin-top:var(--s3)">At <b>100%</b> one preview pixel is one export pixel, so type and logo read at their true size. The stage scrolls when the frame is larger than it.</p>
+      <div style="height:var(--s3)"></div>
+      <div class="row" style="margin-bottom:var(--s2)">
+        <label class="lbl">Fade mask</label>
+        <button class="lockBtn unlocked" id="fadeLock" type="button" aria-pressed="false" aria-label="Fade is unlocked. Click to lock." data-tip="Unlocked — lock to protect the current fade while you work elsewhere."><svg class="ic-closed" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="6.5" rx="1.4"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7"/></svg><svg class="ic-open" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="6.5" rx="1.4"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.4-.9"/></svg></button>
+      </div>
+      <div id="fadeGroup">
+        <button class="switch" id="maskToggle" role="switch" aria-checked="true">
+          <span class="switch-label">Fade mask</span>
+          <span class="switch-track"><span class="switch-knob"></span></span>
+        </button>
+        <p class="note" style="margin-top:var(--s3)">Fades the pattern behind the copy. Auto follows text alignment; override it below.</p>
+        <div style="height:var(--s3)"></div>
+        <div class="seg wrap" id="maskDir" role="group" aria-label="Fade direction">
+          <button type="button" data-v="auto" aria-pressed="true">Auto</button>
+          <button type="button" data-v="to right" aria-pressed="false">Left</button>
+          <button type="button" data-v="to left" aria-pressed="false">Right</button>
+          <button type="button" data-v="center" aria-pressed="false">Center</button>
+          <button type="button" data-v="to top" aria-pressed="false">Bottom</button>
+          <button type="button" data-v="none" aria-pressed="false">Off</button>
+        </div>
+        <div style="height:var(--s3)"></div>
+        <div class="slider"><div class="row"><label class="lbl" for="maskSolid">Solid stop</label><span class="val" id="maskSolid_v"></span></div><input id="maskSolid" type="range" min="0" max="80" step="1" value="30"></div>
+        <div class="slider"><div class="row"><label class="lbl" for="maskFade">Fade end</label><span class="val" id="maskFade_v"></span></div><input id="maskFade" type="range" min="10" max="100" step="1" value="70"></div>
+      </div>
+    </section>
+
+    <!-- ===== BACKGROUND ===== -->
+    <div class="railgroup">Background</div>
+
+    <section class="group">
+      <h2>Field</h2>
+      <p class="note" id="fieldNote" style="margin:0 0 var(--s3); display:none">Image active — it drives the pattern. Clear it to use a procedural field.</p>
+      <div class="fieldpick" id="field" role="group" aria-label="Field pattern"></div>
+      <div style="height:var(--s4)"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="freq">Frequency</label><span class="val" id="freq_v"></span></div><input id="freq" type="range" min="1" max="24" step="0.1" value="7"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="amp">Amplitude</label><span class="val" id="amp_v"></span></div><input id="amp" type="range" min="0" max="2" step="0.01" value="1"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="speed">Speed</label><span class="val" id="speed_v"></span></div><input id="speed" type="range" min="0" max="1.5" step="0.01" value="0.28"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="phase">Phase</label><span class="val" id="phase_v"></span></div><input id="phase" type="range" min="0" max="6.28" step="0.01" value="0"></div>
+    </section>
+
+    <section class="group" id="colorsGroup">
+      <h2>Colors</h2>
+      <p class="note" style="margin:0 0 var(--s3)">Tap a Labs swatch to add it, then pick <b>Ground</b> for the background — everything else becomes marks. Add any custom hex below. AA badges rate each mark against the ground.</p>
+      <div class="swatches" id="brandSwatches"></div>
+      <div class="palette" id="paletteList" style="margin-top:var(--s4)"></div>
+      <button class="btn" id="addColor" style="margin-top:var(--s3)">Add custom color</button>
+      <div class="palroles" id="palRoles"></div>
+    </section>
+
+    <section class="group" id="marksGroup">
+      <h2>Marks<button class="lockBtn unlocked" id="marksLock" type="button" aria-pressed="false" aria-label="Marks are unlocked. Click to lock." data-tip="Unlocked — lock to protect the current mark settings while you work elsewhere."><svg class="ic-closed" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="6.5" rx="1.4"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.6 0V7"/></svg><svg class="ic-open" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3.2" y="7" width="9.6" height="6.5" rx="1.4"/><path d="M5.2 7V5.2a2.8 2.8 0 0 1 5.4-.9"/></svg></button></h2>
+      <div class="slider"><div class="row"><label class="lbl" for="cols">Density</label><span class="val" id="cols_v"></span></div><input id="cols" type="range" min="20" max="220" step="1" value="72"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="rowScale">Cell aspect</label><span class="val" id="rowScale_v"></span></div><input id="rowScale" type="range" min="0.4" max="4" step="0.05" value="3.25"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="len">Mark length</label><span class="val" id="len_v"></span></div><input id="len" type="range" min="0.1" max="1" step="0.01" value="0.83"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="weight">Mark weight</label><span class="val" id="weight_v"></span></div><input id="weight" type="range" min="0.05" max="0.6" step="0.01" value="0.37"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="quant">Row snap</label><span class="val" id="quant_v"></span></div><input id="quant" type="range" min="0" max="16" step="1" value="9"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="jitter">Jitter</label><span class="val" id="jitter_v"></span></div><input id="jitter" type="range" min="0" max="0.6" step="0.01" value="0.18"></div>
+    </section>
+
+    <section class="group collapsed">
+      <h2>Response</h2>
+      <div class="slider"><div class="row"><label class="lbl" for="contrast">Contrast</label><span class="val" id="contrast_v"></span></div><input id="contrast" type="range" min="0.5" max="6" step="0.05" value="1.9"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="bias">Threshold</label><span class="val" id="bias_v"></span></div><input id="bias" type="range" min="-0.3" max="0.9" step="0.01" value="0.18"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="grain">Grain</label><span class="val" id="grain_v"></span></div><input id="grain" type="range" min="0" max="0.08" step="0.002" value="0.012"></div>
+      <p class="note" style="margin-top:var(--s3)">Contrast and threshold shape how the field becomes candles. Grain is a fine hash on the final frame.</p>
+    </section>
+
+    <section class="group collapsed">
+      <h2>Cursor</h2>
+      <div class="seg wrap" id="mouseMode" role="group" aria-label="Cursor interaction">
+        <button type="button" data-v="0" aria-pressed="true">Off</button>
+        <button type="button" data-v="2" aria-pressed="false">Spotlight</button>
+        <button type="button" data-v="1" aria-pressed="false">Ripple</button>
+        <button type="button" data-v="3" aria-pressed="false">Push</button>
+      </div>
+      <div style="height:var(--s3)"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="mouseRadius">Reach</label><span class="val" id="mouseRadius_v"></span></div><input id="mouseRadius" type="range" min="0.04" max="0.5" step="0.01" value="0.16"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="mouseStrength">Strength</label><span class="val" id="mouseStrength_v"></span></div><input id="mouseStrength" type="range" min="0" max="2" step="0.01" value="1"></div>
+      <p class="note">Move the pointer over the canvas. Interaction is live in the preview and baked into MP4.</p>
+    </section>
+
+    <section class="group collapsed">
+      <h2>Source</h2>
+      <label class="drop" id="drop" for="file">
+        <b id="dropLabel">Drop an image</b>
+        <small>Luminance drives the pattern · PNG, JPG, or WebP</small>
+      </label>
+      <input type="file" id="file" accept="image/*">
+      <button class="switch" id="invert" role="switch" aria-checked="false" style="margin-bottom:var(--s2)">
+        <span class="switch-label">Invert luminance</span>
+        <span class="switch-track"><span class="switch-knob"></span></span>
+      </button>
+      <button class="btn" id="clearImg">Clear image</button>
+    </section>
+
+    <!-- ===== CONTENT ===== -->
+    <div class="railgroup">Content</div>
+
+    <section class="group">
+      <h2>Text</h2>
+      <button class="switch" id="textOn" role="switch" aria-checked="true" style="margin-bottom:var(--s4)">
+        <span class="switch-label">Show text</span>
+        <span class="switch-track"><span class="switch-knob"></span></span>
+      </button>
+
+      <div class="tfield">
+        <div class="thead"><label for="tiEyebrow">Eyebrow</label>
+          <span class="hgrp">
+            <button type="button" class="fmt" id="itEyebrow" aria-pressed="false" aria-label="Italic" title="Italic ⌘I">I</button>
+            <select class="sz clr" id="cEyebrow" aria-label="Eyebrow color"></select>
+            <select class="sz" id="szEyebrow" aria-label="Eyebrow size"></select>
+          </span></div>
+        <div class="tedit" id="tiEyebrow" contenteditable="true" role="textbox" aria-multiline="false" aria-label="Eyebrow" data-placeholder="Authorization layer"></div>
+      </div>
+      <div class="tfield">
+        <div class="thead"><label for="tiHead">Headline</label>
+          <span class="hgrp">
+            <button type="button" class="fmt" id="itHead" aria-pressed="false" aria-label="Italic" title="Italic ⌘I">I</button>
+            <select class="sz clr" id="cHead" aria-label="Headline color"></select>
+            <select class="sz" id="szHead" aria-label="Headline size"></select>
+          </span></div>
+        <div class="tedit multi" id="tiHead" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Headline" data-placeholder="Policy, enforced before the transaction exists."></div>
+      </div>
+      <div class="tfield">
+        <div class="thead"><label for="tiBody">Body</label>
+          <span class="hgrp">
+            <button type="button" class="fmt" id="itBody" aria-pressed="false" aria-label="Italic" title="Italic ⌘I">I</button>
+            <select class="sz clr" id="cBody" aria-label="Body color"></select>
+            <select class="sz" id="szBody" aria-label="Body size"></select>
+          </span></div>
+        <div class="tedit multi" id="tiBody" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Body" data-placeholder="Optional supporting line."></div>
+      </div>
+
+      <div class="row" style="margin:var(--s4) 0 var(--s2)"><label class="lbl">Align</label></div>
+      <div class="seg" id="tAlign" role="group" aria-label="Text alignment">
+        <button data-v="left" aria-pressed="true">Left</button>
+        <button data-v="center" aria-pressed="false">Center</button>
+        <button data-v="right" aria-pressed="false">Right</button>
+      </div>
+      <div class="row" style="margin:var(--s3) 0 var(--s2)"><label class="lbl">Position</label></div>
+      <div class="seg" id="tVAlign" role="group" aria-label="Text vertical position">
+        <button data-v="top" aria-pressed="false">Top</button>
+        <button data-v="middle" aria-pressed="true">Middle</button>
+        <button data-v="bottom" aria-pressed="false">Bottom</button>
+      </div>
+
+      <div style="height:var(--s4)"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="tMeasure">Measure</label><span class="val" id="tMeasure_v"></span></div><input id="tMeasure" type="range" min="1" max="12" step="1" value="7"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="tGap">Stack gap</label><span class="val" id="tGap_v"></span></div><input id="tGap" type="range" min="0" max="8" step="0.1" value="1.4"></div>
+      <p class="note">Four sizes on a 1.61 scale. Measure is counted in grid columns. Select words and press <b>I</b> or <b>⌘I</b> for italic — same as Figma.</p>
+    </section>
+
+    <section class="group collapsed">
+      <h2>Logo</h2>
+      <div class="seg" id="lType" role="group" aria-label="Logo type">
+        <button data-v="none" aria-pressed="false">None</button>
+        <button data-v="mark" aria-pressed="false">Mark</button>
+        <button data-v="lockup" aria-pressed="true">Lockup</button>
+      </div>
+      <div class="row" style="margin:var(--s4) 0 var(--s2)"><label class="lbl">Placement</label></div>
+      <div class="seg wrap3" id="lPos" role="group" aria-label="Logo placement">
+        <button data-v="tl" aria-pressed="false" aria-label="Top left">↖</button>
+        <button data-v="tc" aria-pressed="false" aria-label="Top center">↑</button>
+        <button data-v="tr" aria-pressed="true" aria-label="Top right">↗</button>
+        <button data-v="bl" aria-pressed="false" aria-label="Bottom left">↙</button>
+        <button data-v="bc" aria-pressed="false" aria-label="Bottom center">↓</button>
+        <button data-v="br" aria-pressed="false" aria-label="Bottom right">↘</button>
+      </div>
+      <div class="row" style="margin:var(--s4) 0 var(--s2)"><label class="lbl">Size</label></div>
+      <div class="seg" id="lSize" role="group" aria-label="Logo size">
+        <button data-v="S" aria-pressed="false">S</button>
+        <button data-v="M" aria-pressed="true">M</button>
+        <button data-v="L" aria-pressed="false">L</button>
+        <button data-v="XL" aria-pressed="false">XL</button>
+      </div>
+      <div class="row" style="margin:var(--s4) 0 var(--s2)"><label class="lbl">Color</label></div>
+      <div class="seg" id="lColor" role="group" aria-label="Logo color">
+        <button data-v="black" aria-pressed="false">Black</button>
+        <button data-v="white" aria-pressed="true">White</button>
+        <button data-v="blue" aria-pressed="false">Blue</button>
+      </div>
+      <div class="row" style="margin:var(--s4) 0 var(--s2)"><label class="lbl">Backing</label></div>
+      <div class="seg" id="lScrim" role="group" aria-label="Logo backing">
+        <button data-v="none" aria-pressed="true">None</button>
+        <button data-v="scrim" aria-pressed="false">Scrim</button>
+      </div>
+      <p class="note" style="margin-top:var(--s3)"><b>Scrim</b> lays a soft wash of the background color behind the mark so it stays legible over a dense pattern. It fades out well past the mark and never shifts its position.</p>
+    </section>
+
+    <!-- ===== GUIDES ===== -->
+    <section class="group collapsed">
+      <h2>Guides</h2>
+      <div class="seg" id="gCols_seg" role="group" aria-label="Grid columns">
+        <button data-v="6" aria-pressed="false">6 col</button>
+        <button data-v="8" aria-pressed="false">8 col</button>
+        <button data-v="12" aria-pressed="true">12 col</button>
+      </div>
+      <div style="height:var(--s4)"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="gMargin">Margin</label><span class="val" id="gMargin_v"></span></div><input id="gMargin" type="range" min="0" max="16" step="0.5" value="6"></div>
+      <div class="slider"><div class="row"><label class="lbl" for="gGutter">Gutter</label><span class="val" id="gGutter_v"></span></div><input id="gGutter" type="range" min="0" max="6" step="0.1" value="1.5"></div>
+      <button class="switch" id="gShow" role="switch" aria-checked="false">
+        <span class="switch-label">Show grid overlay</span>
+        <span class="switch-track"><span class="switch-knob"></span></span>
+      </button>
+      <p class="note" style="margin-top:var(--s3)">Margin and gutter are a share of the canvas <b>short side</b>, so whitespace holds its optical weight as the ratio changes. Text and logo both inset to this margin. Guide is preview-only.</p>
+    </section>
+
+    <!-- ===== SETUPS ===== -->
+    <section class="group collapsed">
+      <h2>Setups</h2>
+      <div class="saverow">
+        <input type="text" id="setupName" placeholder="Name this setup" aria-label="Setup name">
+        <button class="btn solid" id="setupSave">Save</button>
+      </div>
+      <div id="setupList" class="setups"></div>
+      <div class="grid2" style="margin-top:var(--s3)">
+        <button class="btn" id="setupExport">Export .json</button>
+        <button class="btn" id="setupImport">Import .json</button>
+      </div>
+      <input type="file" id="setupFile" accept="application/json">
+      <p class="note" style="margin-top:var(--s3)">Saves live in this browser. Export JSON to share a composition or keep it in the repo.</p>
+    </section>
+
+    <section class="group">
+      <h2>Export</h2>
+      <div class="row" style="margin-bottom:var(--s2)"><label class="lbl">Format</label></div>
+      <div class="seg wrap" id="expFmt" role="group" aria-label="Export format">
+        <button data-v="png" aria-pressed="true">PNG</button>
+        <button data-v="webp" aria-pressed="false">WebP</button>
+        <button data-v="mp4" aria-pressed="false">MP4</button>
+        <button data-v="svg" aria-pressed="false">SVG</button>
+      </div>
+      <div id="vidOpts" hidden>
+        <div style="height:var(--s3)"></div>
+        <div class="field" style="margin-bottom:var(--s2)"><label for="vidDur">Duration (seconds)</label><input id="vidDur" type="number" min="0.5" max="60" step="0.5" value="5"></div>
+        <button class="switch" id="vidLoop" role="switch" aria-checked="true">
+          <span class="switch-label">Seamless loop</span>
+          <span class="switch-track"><span class="switch-knob"></span></span>
+        </button>
+      </div>
+      <div style="height:var(--s3)"></div>
+      <button class="btn solid" id="exportBtn">Export PNG</button>
+      <p class="note" style="margin-top:var(--s3)"><b>PNG / WebP / SVG</b> bake the current frame at <span id="pngSize">1920×640</span>. <b>MP4</b> records the live animation for the set duration — with <b>Loop</b> on it ping-pongs so the clip repeats seamlessly. Browsers that can't encode MP4 will save a WEBM instead.</p>
+    </section>
+  </aside>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
